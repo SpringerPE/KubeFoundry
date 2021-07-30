@@ -3,7 +3,6 @@ package program
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"os/signal"
 
@@ -107,7 +106,11 @@ func (p *Program) RunAppImage(env map[string]string) (err error) {
 }
 
 func (p *Program) PushApp() (err error) {
-	// program
-	fmt.Println("Hello world")
+	log := p.Configurator.Logger()
+	if action, err := kubefoundry.New(p.Config, log); err == nil {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+		return action.Push(ctx)
+	}
 	return nil
 }
