@@ -497,7 +497,7 @@ func (ac *DockerAppContainerImage) Run(ctx context.Context, dataDir string, env 
 		}
 		err = ac.cli.ContainerStop(context.Background(), containerResp.ID, nil)
 		if err != nil {
-			err = fmt.Errorf("Unable to stop application container: %s", containerhost, err.Error())
+			err = fmt.Errorf("Unable to stop application container: %s", err.Error())
 			ac.log.Error(err)
 		}
 	case status := <-statusCh:
