@@ -1,0 +1,26 @@
+name: {{.Name}}
+services:
+{{- range $i, $a := .Apps}}
+  {{$a.Name}}:
+    type: cf
+    image: "{{$a.Image}}"
+    imagePullPolicy: Always
+    instances: {{$a.Instances}}
+    port: {{$a.Port}}
+{{- if $a.Resources }}
+    resources:
+      cpu: {{$a.Resources.CPU}}
+      memory: {{$a.Resources.Mem}}
+      disk: {{$a.Resources.Disk}}
+{{end -}}
+{{- if $a.Env }}
+    env:
+{{- range $k, $v := $a.Env }}    
+      {{$k}}: "{{$v}}"
+{{end}}{{end -}}
+{{- if $a.Routes }}
+    routes:
+{{- range $r := $a.Routes}}
+      - "{{$r}}"
+{{end}}{{end -}}
+{{end}}

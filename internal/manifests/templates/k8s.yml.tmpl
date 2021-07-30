@@ -1,0 +1,74 @@
+apiVersion: core.oam.dev/v1beta1
+kind: Application
+metadata:
+  creationTimestamp: null
+  name: {{.Name}}
+  namespace: {{.Kubevela.NameSpace}}
+  annotations:
+    "kubefoundry/app": "{{.Name}}"
+{{- if .Git }}
+    "kubefoundry/vsc": "{{.Git}}"
+{{end}}
+    "kubefoundry/date": "{{.DateHuman}}"
+    "kubefoundry/commit": "{{.Ref}}"
+    "kubefoundry/team": "{{.Team}}"
+{{- if .Apps }}{{range $i, $a := .Apps}}
+    "kubefoundry/version.{{$i}}": "{{$a.Version}}"
+{{- if $a.Routes }}{{range $j, $r := $a.Routes}}
+    "kubefoundry/route.{{$i}}.{{$j}}": "{{$r}}"
+{{end}}{{end}}
+{{end}}{{end}}
+
+spec:
+  components:
+{{- range $i, $a := .Apps}}
+  - name: "{{$a.Name}}"
+    type: cf
+    properties:
+      image: "{{$a.Image}}"
+      imagePullPolicy: Always
+      instances: {{$a.Instances}}
+      port: {{$a.Port}}
+{{- if $a.Resources }}
+      resources:
+        cpu: {{$a.Resources.CPU}}
+        memory: {{$a.Resources.Mem}}
+        disk: {{$a.Resources.Disk}}
+{{end -}}
+{{- if $a.Env }}
+      env:
+{{- range $k, $v := $a.Env }}    
+        {{$k}}: "{{$v}}"
+{{end}}{{end -}}
+{{- if $a.Routes }}
+      routes:
+{{- range $r := $a.Routes}}
+        - "{{$r}}"
+{{end}}{{end}}
+    scopes:
+      healthscopes.core.oam.dev: {{$.Name}}-default-health
+{{end}}
+
+status:
+  rollout:
+    batchRollingState: ""
+    currentBatch: 0
+    lastTargetAppRevision: ""
+    rollingState: ""
+    upgradedReadyReplicas: 0
+    upgradedReplicas: 0
+
+
+---
+apiVersion: core.oam.dev/v1alpha2
+kind: HealthScope
+metadata:
+  creationTimestamp: null
+  name: {{.Name}}-default-health
+  namespace: {{.Kubevela.NameSpace}}
+spec:
+  workloadRefs: []
+status:
+  scopeHealthCondition:
+    healthStatus: ""
+

@@ -1,0 +1,40 @@
+---
+Team: engineering-enablement
+
+Log:
+  Level: info
+  Output: split
+
+KubeVela:
+  Environment: engineering-enablement
+  NameSpace: katee-engineering-enablement
+  Cluster: dev
+
+Docker: 
+  Registry: "https://eu.gcr.io"
+  Username: "_json_key"
+  Password: |
+    {
+      "type": "service_account",
+      XXXXXXXXXXXXXXXXXXXXXXXXXXx
+    }
+
+Deployment:
+  StagingDriver: DockerStaging
+  Registry: "eu.gcr.io"
+  Defaults:
+    Domain: apps.example.com
+    Port: 8080
+    Mem: "1024M"
+    Cpu: "1"
+    Disk: "4G"
+  Manifest:
+    ParseCF: "try"
+    Generate: "all"
+    OverWrite: true
+
+DockerStaging:
+  RemoveBeforeBuild: true
+  RestartPolicy: "unless-stopped"
+  DynamicPorts: true
+  BaseImage: "cloudfoundry/cflinuxfs3:latest"
