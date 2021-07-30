@@ -1,0 +1,2 @@
+Apply with:  kubectl -f cf-definition.yml -n vela-system
+See it: vela components 

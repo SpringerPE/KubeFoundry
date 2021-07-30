@@ -1,0 +1,242 @@
+apiVersion: core.oam.dev/v1beta1
+kind: ComponentDefinition
+metadata:
+  name: cf
+  annotations:
+    definition.oam.dev/description: Standard CloudFoundry application
+spec:
+  workload:
+    definition:
+      apiVersion: apps/v1
+      kind: StatefulSet
+  status:
+    healthPolicy: |
+      isHealth: (context.output.status.readyReplicas > 0) && (context.output.status.readyReplicas == context.output.status.replicas)
+  schematic:
+    cue:
+      template: |
+        parameter: {
+          // +usage=Container image would you like to use for your service with format registry.url/TEAM/name:tag-version
+          image: string
+
+          // +usage=When the container image should be pulled from registry, default policy is IfNotPresent. Use Always if you re-push changes with the same tag/versions
+          imagePullPolicy: *"Always" | "IfNotPresent"
+
+          // +usage=Number of instances
+          instances?: *1 | int
+
+          // +usage=CPU, Memory and Disk (ephemeral) assigned to each instance
+          resources: {
+            cpu:    *"1" | string | int
+            memory: *"1Gi" | string | int
+            disk:   *"4Gi" | string | int
+          }
+
+          // +usage=Listening port for incoming traffic
+          port?: *"8080" | int
+
+          // +usage=Mapping key: value to define environment variables
+          env?: [string]: string
+
+          // +usage=Route to access HTTP service
+          routes: [...string]
+
+          mirror: {
+            service:    *context.name | string
+            percentage: *0 | int
+          }
+        }
+        output: {
+          apiVersion: "apps/v1"
+          kind:       "StatefulSet"
+          spec: {
+            selector: matchLabels: {
+              "app.oam.dev/component": context.name
+              "app":                   context.name
+            }
+            if parameter.instances != _|_ {
+              replicas: parameter.instances
+            }
+            template: {
+              metadata: {
+                annotations: {
+                  "kubefoundry/app":  context.name
+                  "kubefoundry/image": parameter.image
+                }
+                labels: {
+                  "sidecar.istio.io/inject": "true"
+                  "app.oam.dev/component":   context.name
+                  "app":                     context.name
+                  "version":                 "v1"
+                  "kubefoundry/app":  context.name
+                }
+              }
+              spec: {
+                    containers: [{
+                        name:            context.name
+                        image:           parameter.image
+                        imagePullPolicy: parameter.imagePullPolicy
+                        command:		     ["/run.py"]
+                        args:            ["--cf-k8s-env", "/etc/kubefoundry-instance-info"]
+                        env: [
+                          if parameter["env"] != _|_ {
+                            for k, v in parameter.env {
+                              name:  k
+                              value: v
+                            }
+                          }
+                        ] + [
+                          { name: "VCAP_PLATFORM_OPTIONS", value: "{}" },
+                          { name: "VCAP_SERVICES", value: "{}" },
+                          { name: "VCAP_APP_HOST", value: "0.0.0.0" },
+                        ]
+                        if parameter["port"] != _|_ {
+                          ports: [{
+                            containerPort: parameter.port
+                            name:          "http-web"
+                          }]
+                        }
+                        resources: {
+                          limits: {
+                            cpu:    parameter.resources.cpu
+                            memory: parameter.resources.memory
+                            "ephemeral-storage": parameter.resources.disk
+                          }
+                          requests: {
+                            cpu:    parameter.resources.cpu
+                            memory: parameter.resources.memory
+                            "ephemeral-storage": parameter.resources.disk
+                          }
+                        }
+                        volumeMounts: [{
+                            name: "podinfo-kubefoundry"
+                            mountPath: "/etc/kubefoundry-instance-info"
+                        }]
+                        startupProbe: {
+                          exec: command: ["/healthcheck.sh"]
+                          initialDelaySeconds: 2
+                          failureThreshold: 1
+                          periodSeconds: 2
+                        }
+                        livenessProbe: {
+                          exec: command: ["/healthcheck.sh"]
+                          failureThreshold: 1
+                          periodSeconds: 30
+                        }
+                    }]
+                    tolerations: [{
+                      key:      "dedicated"
+                      operator: "Equal"
+                      value:    "katee-default"
+                      effect:   "NoSchedule"
+                    }]
+                    affinity: nodeAffinity: {
+                      requiredDuringSchedulingIgnoredDuringExecution: {
+                        nodeSelectorTerms: [{
+                          matchExpressions: [{
+                            key:      "dedicated"
+                            operator: "In"
+                            values: [
+                              "katee-default",
+                            ]
+                          }]
+                        }]
+                      }
+                    }
+                    volumes: [{
+                      name: "podinfo-kubefoundry"
+                      downwardAPI: items: [
+                          { 
+                            path: "CPU_LIMIT"
+                            resourceFieldRef: {
+                              containerName: context.name
+                              resource: "limits.cpu"
+                              divisor: "1m"
+                            }
+                          },
+                          { 
+                            path: "MEMORY_LIMIT"
+                            resourceFieldRef: {
+                              containerName: context.name
+                              resource: "limits.memory"
+                              divisor: "1Mi"
+                            }
+                          },
+                          {
+                            path: "INSTANCE_NAMESPACE"
+                            fieldRef: fieldPath: "metadata.namespace"
+                          },
+                          {
+                            path: "INSTANCE_IP"
+                            fieldRef: fieldPath: "metadata.annotations['cni.projectcalico.org/podIP']"
+                          },
+                          {
+                            path: "INSTANCE_NAME"
+                            fieldRef: fieldPath: "metadata.labels['app.oam.dev/component']"
+                          },
+                          { 
+                            path: "INSTANCE_GUID"
+                            fieldRef: fieldPath: "metadata.uid"
+                          },
+                          { 
+                            path: "labels"
+                            fieldRef: fieldPath: "metadata.labels"
+                          },
+                          { 
+                            path: "annotations"
+                            fieldRef: fieldPath: "metadata.annotations"
+                          },
+                        ]
+                    }]
+              }
+            }
+          }
+        }
+        outputs: service: {
+          apiVersion: "v1"
+          kind:       "Service"
+          metadata: name: context.name
+          spec: {
+            selector: {
+              "app.oam.dev/component": context.name
+              "app":                   context.name
+            }
+            ports: [{
+              port:       80
+              name:       "http-web"
+              targetPort: *context.output.spec.template.spec.containers[0].ports[0].containerPort | 8080
+            }]
+          }
+        }
+        outputs: virtualservice: {
+          apiVersion: "networking.istio.io/v1beta1"
+          kind:       "VirtualService"
+          metadata: name: context.name
+          spec: {
+            hosts: parameter.routes
+            gateways: [
+              "istio-system/private",
+              "istio-system/public",
+              "mesh",
+            ]
+            http: [
+              {
+                {
+                  route: [{
+                    destination: {
+                      host: context.name
+                    }
+                  }]
+                }
+                {
+                  mirror: {
+                    host: parameter.mirror.service
+                  }
+                }
+                {
+                  mirrorPercentage: value: parameter.mirror.percentage
+                }
+              },
+            ]
+          }
+        }
