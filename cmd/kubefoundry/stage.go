@@ -19,7 +19,7 @@ import (
 )
 
 var stageCmd = &cobra.Command{
-	Use:           "build",
+	Use:           "stage",
 	Short:         "Build and Push Kubevela application container image",
 	Long:          `Build Kubevela Application container simulating CF staging in Docker and if success push the image to the registry `,
 	RunE:          stage,
