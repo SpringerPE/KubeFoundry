@@ -1,4 +1,5 @@
 *.log
+config.yml
 /releases/
 /test/
 /build/
