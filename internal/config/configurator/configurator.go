@@ -2,6 +2,7 @@ package configurator
 
 import (
 	"fmt"
+	"os/user"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -52,6 +53,10 @@ func New(version, configArg string, cmd *cobra.Command) Configurator {
 		viper:         viper.New(),
 		Log:           log.StandardLogger(),
 	}
+	if strings.HasPrefix(c.PathConfig, "~/") {
+		usr, _ := user.Current()
+		c.PathConfig = filepath.Join(usr.HomeDir, c.PathConfig[2:])
+	}
 	m := make(map[string]interface{})
 	inspectConfig(reflect.ValueOf(new(config.Config)), "flag", "", ".", m)
 	for key, value := range m {
@@ -61,7 +66,7 @@ func New(version, configArg string, cmd *cobra.Command) Configurator {
 		}
 	}
 	// Bind config flag
-	cfgFullPath := filepath.Join(config.ConfigPath, config.ConfigFile)
+	cfgFullPath := filepath.Join(c.PathConfig, c.FileConfig)
 	msg := fmt.Sprintf("%s config file (default %s)", config.ConfigType, cfgFullPath)
 	cmd.PersistentFlags().String(configArg, "", msg)
 	c.BindFlagCommand(true, configArg, cmd)
@@ -79,10 +84,10 @@ func (c *configurator) InitConfig() *config.Config {
 			c.viper.SetDefault(key, value)
 		}
 	}
-	c.viper.SetConfigName(config.ConfigFile)
+	c.viper.SetConfigName(c.FileConfig)
 	c.viper.SetConfigType(config.ConfigType)
 	c.viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	c.viper.AddConfigPath(config.ConfigPath)
+	c.viper.AddConfigPath(c.PathConfig)
 	// Logger initialize
 	logger, _ := log.New(&log.Config{
 		Level:         cfg.Log.Level,

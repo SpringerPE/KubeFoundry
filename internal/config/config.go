@@ -3,7 +3,7 @@ package config
 const (
 	ConfigType      string = "yaml"
 	ConfigFile      string = "config.yml"
-	ConfigPath      string = "/etc/kubefoundry"
+	ConfigPath      string = "~/.kubefoundry"
 	ConfigEnv       string = "KF"
 	ConfigUserAgent string = "kubefoundry"
 )
@@ -53,7 +53,7 @@ type Deployment struct {
 // This config what the driver gets (dockerstaging)
 type DockerStaging struct {
 	RemoveBeforeBuild bool   `mapstructure:"removebeforebuild" default:"true"`
-	RestartPolicy     string `mapstructure:"restartpolicy" valid:"in(no|unless-stopped|on-failure) default:"unless-stopped"`
+	RestartPolicy     string `mapstructure:"restartpolicy" valid:"in(no|unless-stopped|on-failure)" default:"unless-stopped"`
 	DynamicPorts      bool   `mapstructure:"dynamicports" default:"false"`
 	BaseImage         string `mapstructure:"baseimage" default:"cloudfoundry/cflinuxfs3:latest"`
 }
