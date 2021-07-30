@@ -1,4 +1,4 @@
-package main
+package git
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/go-git/go-billy/v5/osfs"
-	"github.com/go-git/go-git/v5"
+	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/storage/memory"
 )
@@ -36,7 +36,9 @@ func NewGitRepo(local string, memory bool) (*GitRepo, error) {
 	return nil, err
 }
 
-func (g *GitRepo) Clone(remote, reference, string, recursive bool) error {
+func (g *GitRepo) Clone(remote, reference string, recursive bool) (err error) {
+	var repo *git.Repository
+
 	ref := plumbing.ReferenceName(reference)
 	options := git.CloneOptions{
 		URL:  remote,
@@ -60,9 +62,9 @@ func (g *GitRepo) Clone(remote, reference, string, recursive bool) error {
 		fs := osfs.New(g.path)
 		// Clones the repository into the worktree (fs) and storer all the .git
 		// content into the storer
-		repo, err := git.Clone(storer, fs, &options)
+		repo, err = git.Clone(storer, fs, &options)
 	} else {
-		repo, err := git.PlainClone(g.path, false, &options)
+		repo, err = git.PlainClone(g.path, false, &options)
 	}
 	if err == nil {
 		g.url = remote
