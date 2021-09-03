@@ -13,7 +13,7 @@ import (
 
 	log "kubefoundry/internal/log"
 
-	yaml "gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v3"
 )
 
 type CfApplication struct {
@@ -39,6 +39,7 @@ type CfManifest struct {
 }
 
 func ParseCfManifest(dir string, log log.Logger) (manifest *CfManifest, err error) {
+	manifest = &CfManifest{}
 	// Can be either manifest.yml or manifest.yaml
 	filename := "manifest.yml"
 	manifestPath := filepath.Join(dir, filename)
