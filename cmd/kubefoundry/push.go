@@ -15,6 +15,8 @@
 package kubefoundry
 
 import (
+	"fmt"
+
 	cobra "github.com/spf13/cobra"
 )
 
@@ -27,14 +29,20 @@ var pushCmd = &cobra.Command{
 	SilenceErrors: false,
 }
 
-func push(command *cobra.Command, args []string) error {
-	err := program.LoadConfig()
-	if err == nil {
-		err = program.PushApp()
+func push(command *cobra.Command, args []string) (err error) {
+	dst, _ := command.Flags().GetString("destination")
+	if dst == "test" {
+		err = program.LoadConfig()
+		if err == nil {
+			err = program.PushApp()
+		}
+	} else {
+		err = fmt.Errorf("Not ready yet!. Not properly IMPLEMENTED. Sorry!")
 	}
 	return err
 }
 
 func init() {
+	pushCmd.PersistentFlags().StringP("destination", "d", "", "Where to push the app")
 	Cmd.AddCommand(pushCmd)
 }
