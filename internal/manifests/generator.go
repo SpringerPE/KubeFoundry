@@ -22,9 +22,14 @@ const (
 	CF
 	AppFile
 	KubeFoundry
+	K8S
 )
 
-func GetManifestType(text string) (m ManifestType) {
+func Types() []ManifestType {
+	return []ManifestType{Unknown, CF, AppFile, KubeFoundry, K8S}
+}
+
+func Type(text string) (m ManifestType) {
 	switch strings.ToLower(text) {
 	case "cf":
 		return CF
@@ -33,7 +38,7 @@ func GetManifestType(text string) (m ManifestType) {
 	case "kubefoundry":
 		return KubeFoundry
 	case "kubernetes":
-		return KubeFoundry
+		return K8S
 	default:
 		return Unknown
 	}
@@ -46,6 +51,8 @@ func (m ManifestType) Filename() string {
 	case AppFile:
 		return "vela.yml"
 	case KubeFoundry:
+		return "app.yml"
+	case K8S:
 		return "deploy.yml"
 	default:
 		return ""
@@ -53,22 +60,22 @@ func (m ManifestType) Filename() string {
 }
 
 func (m ManifestType) String() string {
-	kinds := [...]string{"Unknown", "CF", "AppFile", "KubeFoundry"}
+	kinds := [...]string{"Unknown", "CF", "AppFile", "KubeFoundry", "K8S"}
 	return kinds[int(m)]
 }
 
-type ManifestGenerator struct {
+type Generator struct {
 	output    io.Writer
 	templates *template.Template
 	log       log.Logger
 }
 
-func NewManifestGenerator(output io.Writer, l log.Logger) (*ManifestGenerator, error) {
+func NewGenerator(output io.Writer, l log.Logger) (*Generator, error) {
 	templates, err := template.ParseFS(EmbedK8sTemplates, "templates/*")
 	if err != nil {
 		panic(err)
 	}
-	m := &ManifestGenerator{
+	m := &Generator{
 		templates: templates,
 		output:    output,
 		log:       l,
@@ -76,16 +83,15 @@ func NewManifestGenerator(output io.Writer, l log.Logger) (*ManifestGenerator, e
 	return m, nil
 }
 
-func (m *ManifestGenerator) Generate(kind ManifestType, data *ContextData) (err error) {
-	switch kind {
-	case CF:
-		err = fmt.Errorf("Generate CF manifest file not implemented")
-	case AppFile:
-		err = m.templates.ExecuteTemplate(m.output, "vela.yml.tmpl", data)
-	case KubeFoundry:
-		err = m.templates.ExecuteTemplate(m.output, "k8s.yml.tmpl", data)
-	default:
-		err = fmt.Errorf("Unknown manifest type")
+func (m *Generator) Generate(kind ManifestType, data *ContextData) (err error) {
+	if kind == CF {
+		err = fmt.Errorf("Cannot generate CF manifest file")
+	} else {
+		if filename := kind.Filename(); filename != "" {
+			err = m.templates.ExecuteTemplate(m.output, filename+".tmpl", data)
+		} else {
+			err = fmt.Errorf("Unknown manifest type")
+		}
 	}
 	if err != nil {
 		m.log.Error(err)
@@ -93,18 +99,18 @@ func (m *ManifestGenerator) Generate(kind ManifestType, data *ContextData) (err 
 	return
 }
 
-func NewManifestFile(kind ManifestType, data *ContextData, fullpath string, truncate bool, l log.Logger) error {
+func New(kind ManifestType, data *ContextData, fullpath string, truncate bool, l log.Logger) error {
 	flags := os.O_RDWR | os.O_CREATE
 	if truncate {
 		flags = os.O_RDWR | os.O_CREATE | os.O_TRUNC
 	}
 	target, err := os.OpenFile(fullpath, flags, 0755)
 	if err != nil {
-		err = fmt.Errorf("Unable to create manifest file: %s", err.Error())
+		err = fmt.Errorf("Unable to create manifest: %s", err.Error())
 		return err
 	}
 	defer target.Close()
-	m, err := NewManifestGenerator(target, l)
+	m, err := NewGenerator(target, l)
 	if err != nil {
 		return err
 	}

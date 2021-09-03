@@ -20,6 +20,7 @@ import (
 	k8sClientKubernetes "k8s.io/client-go/kubernetes"
 	k8sClientRest "k8s.io/client-go/rest"
 	k8sClientRestmapper "k8s.io/client-go/restmapper"
+
 	//k8sUtilYaml "k8s.io/apimachinery/pkg/util/yaml"
 	//k8sClientcmd "k8s.io/client-go/tools/clientcmd"
 	// Uncomment to load all auth plugins
@@ -82,28 +83,22 @@ func (d *KubeFoundryCliFacade) GenerateManifest() (err error) {
 	if err != nil {
 		return err
 	}
-	// (appfile|kubefoundry|all)
+	// (appfile|kubefoundry|kubernetes|all)
 	fullpath := d.path
 	truncate := d.configDeployment.Manifest.OverWrite
-	switch d.configDeployment.Manifest.Generate {
-	case "all":
-		fullpath = filepath.Join(d.path, d.configDeployment.Manifest.KubeFoundry)
-		err = manifest.NewManifestFile(manifest.KubeFoundry, data, fullpath, truncate, d.log)
-		if err == nil {
-			fullpath = filepath.Join(d.path, d.configDeployment.Manifest.AppFile)
-			err = manifest.NewManifestFile(manifest.AppFile, data, fullpath, truncate, d.log)
+	for _, man := range manifest.Types() {
+		if man == manifest.CF {
+			continue
 		}
-	case "appfile":
-		fullpath = filepath.Join(d.path, d.configDeployment.Manifest.AppFile)
-		err = manifest.NewManifestFile(manifest.AppFile, data, fullpath, truncate, d.log)
-	case "kubefoundry":
-		fullpath = filepath.Join(d.path, d.configDeployment.Manifest.KubeFoundry)
-		err = manifest.NewManifestFile(manifest.KubeFoundry, data, fullpath, truncate, d.log)
-	default:
-		err = fmt.Errorf("Unable to generate such manifest")
-	}
-	if err != nil {
-		d.log.Error(err)
+		if d.configDeployment.Manifest.Generate == "all" {
+			fullpath = filepath.Join(d.path, man.Filename())
+			err = manifest.New(man, data, fullpath, truncate, d.log)
+		} else if d.configDeployment.Manifest.Generate == man.String() {
+			fullpath = filepath.Join(d.path, man.Filename())
+			err = manifest.New(man, data, fullpath, truncate, d.log)
+			break
+		}
+
 	}
 	return err
 }
@@ -148,7 +143,7 @@ func (d *KubeFoundryCliFacade) Push(ctx context.Context) (err error) {
 	if err = d.getK8sClient(); err != nil {
 		return err
 	}
-	manifest := filepath.Join(d.path, d.configDeployment.Manifest.KubeFoundry)
+	manifest := filepath.Join(d.path, manifest.KubeFoundry.Filename())
 	manifestBuff := bytes.NewBuffer(nil)
 	if manifestfd, err := os.Open(manifest); err == nil {
 		manifestBuff.ReadFrom(manifestfd)

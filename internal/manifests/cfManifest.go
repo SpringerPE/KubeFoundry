@@ -11,8 +11,9 @@ import (
 	"strconv"
 	"strings"
 
-	yaml "gopkg.in/yaml.v2"
 	log "kubefoundry/internal/log"
+
+	yaml "gopkg.in/yaml.v2"
 )
 
 type CfApplication struct {
@@ -45,21 +46,21 @@ func ParseCfManifest(dir string, log log.Logger) (manifest *CfManifest, err erro
 		filename = "manifest.yaml"
 		manifestPath = filepath.Join(dir, filename)
 		if _, err = os.Stat(manifestPath); os.IsNotExist(err) {
-			err = fmt.Errorf("Cannot not find manifest file file in '%s': %s", dir, err.Error())
-			log.Error(err)
+			err = fmt.Errorf("Cannot find CF manifest in '%s': %s", dir, err.Error())
 			return
 		}
 	}
 	data, errPath := ioutil.ReadFile(manifestPath)
 	if errPath != nil {
 		err = fmt.Errorf("Failed to read manifest '%s': %s", manifestPath, errPath.Error())
-		log.Error(err)
 		return
 	}
-	err = yaml.Unmarshal(data, &manifest)
-	if err != nil {
+	err = yaml.Unmarshal(data, manifest)
+	if err != nil || manifest == nil {
+		if err == nil {
+			err = fmt.Errorf("empty manifest")
+		}
 		err = fmt.Errorf("Failed to unmarshall manifest %s: %s", manifestPath, err.Error())
-		log.Error(err)
 		return
 	}
 	manifest.Path = dir

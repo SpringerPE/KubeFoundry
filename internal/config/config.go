@@ -32,11 +32,10 @@ type Defaults struct {
 }
 
 type Manifest struct {
-	ParseCF     string `mapstructure:"parsecf" valid:"in(yes|no|try),required" default:"try" flag:"cf manifest"`
-	AppFile     string `mapstructure:"appfile" default:"vela.yml" valid:"required" flag:"kubevela appfile"`
-	KubeFoundry string `mapstructure:"kubefoundry" default:"deploy.yml" valid:"required" flag:"kubefoundry manifest"`
-	Generate    string `mapstructure:"generate" valid:"in(appfile|kubefoundry|all),required" default:"kubefoundry" flag:"manifest generate"`
-	OverWrite   bool   `mapstructure:"overwrite" default:"true" flag:"manifest overwrite"`
+	ParseCF   string `mapstructure:"parsecf" valid:"in(yes|no|try),required" default:"try" flag:"cf manifest"`
+	AppFile   string `mapstructure:"appfile" default:"vela.yml" valid:"required" flag:"kubevela appfile"`
+	Generate  string `mapstructure:"generate" valid:"in(appfile|kubefoundry|kubernetes|all),required" default:"kubefoundry" flag:"manifest generate"`
+	OverWrite bool   `mapstructure:"overwrite" default:"true" flag:"manifest overwrite"`
 }
 
 type Deployment struct {

@@ -8,8 +8,9 @@ import (
 	"strings"
 	"time"
 
-	gitrepo "github.com/go-git/go-git/v5"
 	log "kubefoundry/internal/log"
+
+	gitrepo "github.com/go-git/go-git/v5"
 )
 
 type CfData struct {
@@ -137,7 +138,7 @@ func (d *ContextData) GetContextDataDefault(name, version string, port int, rs *
 		image = d.Registry + "/" + d.Team + "/" + image
 	}
 	if rs != nil && rs.Domain != "" {
-		routes["http-0"] = hostname + "." + rs.Domain
+		routes["http-0"] = strings.ToLower(hostname + "." + rs.Domain)
 	}
 	appData := AppData{
 		Name:      appname,
