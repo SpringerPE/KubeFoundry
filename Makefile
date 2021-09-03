@@ -12,8 +12,7 @@ LDFLAGS := -X main.Build=$(BUILD) -X main.Version=$(VERSION)
 export GO111MODULE=on
 
 # Define architectures
-BUILDER := linux-amd64 linux-arm-6 linux-arm-7 linux-arm64
-DEBPKG := deb-amd64 deb-armhf
+BUILDER := linux-amd64 linux-arm64 darwin-amd64 windows-amd64
 
 # Go paths and tools
 GOBIN := $(GOPATH)/bin
@@ -27,36 +26,45 @@ GOLINT := $(GOBIN)/golint
 ERRCHECK := $(GOBIN)/errcheck
 STATICCHECK := $(GOBIN)/staticcheck
 
+.PHONY: help
+help:	### Show targets documentation
+ifeq ($(UNAME), Linux)
+	@grep -P '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+else
+	@awk -F ':.*###' '$$0 ~ FS {printf "%15s%s\n", $$1 ":", $$2}' \
+		$(MAKEFILE_LIST) | grep -v '@awk' | sort
+endif
 
 .PHONY: all
-all: test build deb
+all: test build  ### Test and build the binaries
 
 .PHONY: clean-all
-clean-all: clean clean-vendor clean-build
+clean-all: clean clean-vendor clean-build  ### Clean all artifacts, packages and vendor dependencies
 
 .PHONY: clean
-clean:
+clean:  ### Delete go resources
 	@echo "*** Deleting go resources ***"
 	$(GOCLEAN) -i ./...
 
 .PHONY: clean-vendor
-clean-vendor:
+clean-vendor:  ### Delete vendor packages
 	@echo "*** Deleting vendor packages ***"
 	find $(CURDIR)/vendor -type d -print0 2>/dev/null | xargs -0 rm -Rf
 
 .PHONY: clean-build
-clean-build:
+clean-build:  ### Delete builds and OS packages
 	@echo "*** Deleting builds ***"
 	@rm -Rf build/*
 	@rm -Rf deb/*
 
 .PHONY: test
-test:
+test:  ### Run golang tests
 	@echo "*** Running tests ***"
 	$(GOTEST) -v ./...
 
 .PHONY: lint
-lint: golint vet errcheck staticcheck unused checklicense
+lint: golint vet errcheck staticcheck unused checklicense  ### Run all linting checks
 
 $(GOLINT):
 	go get -u -v github.com/golang/lint/golint
@@ -71,55 +79,40 @@ $(UNUSED):
 	go get -u honnef.co/go/tools/cmd/unused
 
 .PHONY: golint
-golint: $(GOLINT)
+golint: $(GOLINT)  ### Run golint
 	$(GOLINT) $(PKGS)
 
 .PHONY: vet
-vet:
+vet: ### Run vet
 	$(GOVET) -v $(PKGS)
 
 .PHONY: errcheck
-errcheck: $(ERRCHECK)
+errcheck: $(ERRCHECK)  ### Run errcheck
 	$(ERRCHECK) ./...
 
 .PHONY: staticcheck
-staticcheck: $(STATICCHECK)
+staticcheck: $(STATICCHECK)  ### Run staticcheck
 	$(STATICCHECK) ./...
 
 .PHONY: unused
-unused: $(UNUSED)
+unused: $(UNUSED)  ### Run unused
 	$(UNUSED) ./...
 
 .PHONY: $(GOMETALINTER)
-$(GOMETALINTER):
+$(GOMETALINTER): ### Run gometalinter
 	go get -u github.com/alecthomas/gometalinter
 	gometalinter --install &> /dev/null
 
 # linux-amd64, linux-arm-6, linux-arm-7, linux-arm64
 .PHONY: $(BUILDER)
-$(BUILDER):
+$(BUILDER):  ### Build specific binary
 	@echo "*** Building binary for $@ ***"
 	$(eval OS := $(word 1,$(subst -, ,$@)))
 	$(eval OSARCH := $(word 2,$(subst -, ,$@)))
 	$(eval ARCHV := $(word 3,$(subst -, ,$@)))
-	@if [ "$(OSARCH)" = "arm" ]; then export GOARM=${ARCHV}; fi
 	@mkdir -p build
 	GOOS=${OS} GOARCH=${OSARCH} ${GOBUILD} -ldflags "${LDFLAGS}" -o build/${BINARY}-${VERSION}-${OS}-${OSARCH}${ARCHV}
 
-# deb-amd64 deb-armhf
-.PHONY: $(DEBPKG)
-$(DEBPKG):
-	@echo "*** Building debian package for $@ ***"
-	$(eval ARCH := $(word 2,$(subst -, ,$@)))
-	@mkdir -p deb
-	dpkg-buildpackage -rfakeroot -us -uc -b --host-arch=${ARCH} --target-arch=${${ARCH}}
-	@mv -f ../confinit_* deb/
-
 # from all
 .PHONY: build
-build: linux-amd64 linux-arm-6 linux-arm64
-
-# from all
-.PHONY: deb
-deb: deb-amd64 deb-armhf
-
+build: $(BUILDER)  ### Build binaries
