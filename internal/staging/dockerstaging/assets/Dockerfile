@@ -13,7 +13,7 @@ FROM "${BASE}" AS staging
 ARG APP_NAME
 ARG APP_CREATED="now"
 ARG APP_VERSION="latest"
-ARG APP_HOME="/home/vcap"
+ARG APP_HOME="/home/vcap/app"
 ARG APP_PORT=8080
 ARG CF_API="https://api.cf"
 ARG CF_ORG="undefined"
@@ -21,8 +21,9 @@ ARG CF_SPACE="undefined"
 ARG CF_VCAP_SERVICES="{}"
 ARG CF_MANIFEST=manifest.yml
 ARG CF_VARS=vars.yml
-ARG CONTEXT_DIR=/app
-ARG BUILDPACKS_DIR=/buildpacks
+ARG HOME="/home/vcap"
+ARG CONTEXT_DIR="/app"
+ARG BUILDPACKS_DIR="/buildpacks"
 
 
 # Env vars needed:
@@ -46,7 +47,8 @@ ARG BUILDPACKS_DIR=/buildpacks
 # CF_INSTANCE_KEY="/etc/cf-instance-credentials/instance.key"
 
 
-ENV HOME=${APP_HOME} \
+ENV HOME=${HOME} \
+    LANG=en_US.UTF-8 \
     APP_NAME=${APP_NAME} \
     APP_VERSION=${APP_VERSION} \
     APP_PORT=${APP_PORT} \
@@ -57,7 +59,7 @@ ENV HOME=${APP_HOME} \
 
 # copy resources
 COPY *.py /
-WORKDIR ${APP_HOME}
+WORKDIR ${HOME}
 
 # Add buildpacks
 VOLUME ${BUILDPACKS_DIR}
@@ -68,7 +70,7 @@ COPY app ${CONTEXT_DIR}
 
 # Run staging
 RUN /staging.py \
-    --home ${APP_HOME} \
+    --home ${HOME} \
     --contex ${CONTEXT_DIR} \
     --cache ${BUILDPACKS_DIR}/cache \
     --manifest ${CF_MANIFEST} \
@@ -81,18 +83,17 @@ RUN /staging.py \
 ARG BASE=cloudfoundry/cflinuxfs3:latest
 FROM "${BASE}"
 
-
-ARG APP_HOME="/home/vcap"
+ARG APP_NAME
+ARG APP_CREATED="now"
+ARG APP_VERSION="latest"
+ARG APP_HOME="/home/vcap/app"
 ARG APP_PORT=8080
 ARG CF_API="https://api.cf.local"
-
-
-# ARG APP_NAME
-# ARG APP_CREATED="now"
-# ARG APP_VERSION="latest"
-# ARG CF_ORG="undefined"
-# ARG CF_SPACE="undefined"
-# ARG CF_VCAP_SERVICES="{}"
+ARG CF_ORG="undefined"
+ARG CF_SPACE="undefined"
+ARG HOME="/home/vcap"
+ARG CF_MANIFEST=manifest.yml
+ARG CF_VARS=vars.yml
 
 LABEL org.opencontainers.image.ref.name="${APP_NAME}"
 LABEL org.opencontainers.image.created="${APP_CREATED}"
@@ -105,6 +106,11 @@ LABEL com.springernature.kubefoundry.team="${CF_SPACE}"
 LABEL com.springernature.kubefoundry.application.name="${APP_NAME}"
 LABEL com.springernature.kubefoundry.application.version="${APP_VERSION}"
 LABEL com.springernature.kubefoundry.application.date="${APP_CREATED}"
+
+WORKDIR ${HOME}
+# copy resources
+COPY --chown=vcap:vcap --from=staging ${HOME} .
+COPY --from=staging /run.py /healthcheck.sh /
 
 # https://docs.cloudfoundry.org/devguide/deploy-apps/environment-variable.html#app-system-env
 # If not defined here, these env vars are defined in the run script
@@ -150,11 +156,6 @@ ENV HOME=${APP_HOME} \
     DEPS_DIR=/home/vcap/deps \
     PORT=${APP_PORT}
 
-WORKDIR ${APP_HOME}
-# copy resources
-COPY --from=staging ${APP_HOME} .
-COPY --from=staging /run.py /healthcheck.sh /
-
 # Note: Docker healthchecks are not used by K8S!
 # This is only useful for platforms based in Docker (or supporting the healthchecks!)
 # BUT: In K8S is possible to target a command as a healthcheck, so you only need to
@@ -167,4 +168,4 @@ HEALTHCHECK \
     CMD /healthcheck.sh
 
 EXPOSE ${APP_PORT}
-CMD ["/run.py", "--cf-fake-env", "--manifest-env"]
+CMD ["/run.py", "--user", "vcap", "--cf-fake-env", "--manifest-env"]

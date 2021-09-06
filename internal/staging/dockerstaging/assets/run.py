@@ -25,6 +25,7 @@ import threading
 import uuid
 import socket
 import json
+import pwd
 
 from subprocess import (Popen, PIPE)
 from queue import Queue
@@ -35,12 +36,13 @@ from pathlib import Path
 
 class Runner(object):
 
-    def __init__(self, working_path, env={}, logger=None):
+    def __init__(self, working_path, env={}, user="", logger=None):
         self.working_path = working_path
         self.env = env
         self.queue = Queue()
         self.procs = deque()
         self.threads = []
+        self.user = user
         if not logger:
             logger = logging.getLogger(self.__class__.__name__)
         self.logger = logger
@@ -48,6 +50,21 @@ class Runner(object):
         signal.signal(signal.SIGINT, self._progagate_signal)
         signal.signal(signal.SIGTERM, self._progagate_signal)        
         signal.siginterrupt(signal.SIGUSR1, False)
+
+    def _set_user(self):
+        if self.user != "":
+            try:
+                pw = pwd.getpwnam(self.user)
+                uid = pw.pw_uid
+            except:
+                self.logger.error("User '%s' not found in the sytem" % (self.user))
+                raise
+            self.logger.debug("Setting running user: '%s'" % (self.user))
+            def changeuser():
+                os.setgid(uid)
+                os.setuid(uid)
+            return changeuser
+        return lambda: None
 
     def _thread_runner(self, command, env={}, shell=False, wpath=None):
         environ = os.environ.copy()
@@ -62,6 +79,7 @@ class Runner(object):
             shell = shell,
             env = environ,
             start_new_session = True,
+            preexec_fn = self._set_user(),
         )
         this = threading.current_thread()
         proc = Popen(command, **kwargs)
@@ -216,7 +234,7 @@ class CFManifest(object):
 
 class CFRunner(object):
 
-    def __init__(self, homedir, cfmanifest, variables=None, logger=None):
+    def __init__(self, homedir, cfmanifest, user="", variables=None, logger=None):
         # homedir = /var/vcap
         # buildpacksdir = directory to download/process buildpacks
         # cachedir = directory used by buildpacks for caching their stuff
@@ -226,6 +244,7 @@ class CFRunner(object):
             logger = logging.getLogger(self.__class__.__name__)
         self.logger = logger
         self.homedir = homedir
+        self.user = user
         self.appdir = os.path.join(homedir, 'app')
         self.depsdir = os.path.join(homedir, 'deps')
         self.initd = os.path.join(homedir, 'init.d')
@@ -267,6 +286,8 @@ class CFRunner(object):
         if not app_name:
             app_name = name
         vcap_app = dict(
+            instance_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, app_name)),
+            instance_index = '0',
             cf_api = os.getenv('CF_API', 'https://api.cf.local'),
             limits = {
                 "fds": 16384,
@@ -404,10 +425,12 @@ class CFRunner(object):
             },
             users = 'null',
             name = app_name,
+            instance_id = uid,
+            instance_index = instance_index,
             application_name = app_name,
-            application_id = uid,
-            version = annotations.get("kubefoundry/app/version", os.getenv('APP_VERSION', 'latest')),   
-            application_version = annotations.get("kubefoundry/app/version", os.getenv('APP_VERSION', 'latest')),
+            application_id = annotations.get("kubefoundry/appuid.0", uid),
+            version = annotations.get("kubefoundry/version.0", os.getenv('APP_VERSION', 'latest')),
+            application_version = annotations.get("kubefoundry/version.0", os.getenv('APP_VERSION', 'latest')),
             uris = uris,
             application_uris = uris,
             space_name =  space,
@@ -438,7 +461,7 @@ class CFRunner(object):
         return staging_info
 
     def run(self, exit_if_any=True, read_manifest_env=True, fake_cf_env=True, kubefoundry_env_path=''):
-        runner = Runner(self.appdir, {}, self.logger)
+        runner = Runner(self.appdir, {}, self.user, self.logger)
         for f in Path(self.initd).glob('*.sh'):
             m = re.match(r"(\d+_\d+|\d+)_(.*)\.sh$", f.name)
             if m is not None:
@@ -479,6 +502,7 @@ def main():
     parser.add_argument('-f', '--cf-fake-env', action='store_true', default=False, help='Simulate fake CF environment variables')
     parser.add_argument('-k', '--cf-k8s-env', metavar='/path/to/volume', help='Generate CF environment variables from K8S volume info')
     parser.add_argument('-m', '--manifest', metavar='manifest.yml', default="manifest.yml", help='CloudFoundry application manifest file')
+    parser.add_argument('-u', '--user', default="vcap", help='Run applicaion(s) as this user')
     parser.add_argument('-v', '--manifest-vars', metavar='vars.yml', default="vars.yml", help='CloudFoundry variables file for manifest')
     parser.add_argument('-H', '--home', default="/home/vcap", help='Cloudfoundry VCAP home folder')
     args = parser.parse_args()
@@ -489,7 +513,7 @@ def main():
         logger.setLevel(logging.INFO)
         handler.setLevel(logging.INFO)
     try:
-        runner = CFRunner(args.home, args.manifest, args.manifest_vars, logger)
+        runner = CFRunner(args.home, args.manifest, args.user, args.manifest_vars, logger)
         rc = runner.run(True, args.manifest_env, args.cf_fake_env, args.cf_k8s_env)
         sys.exit(rc)
     except Exception as e:

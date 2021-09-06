@@ -39,7 +39,7 @@ from subprocess import (Popen, PIPE)
 from collections import OrderedDict
 from urllib.parse import urlsplit
 
-# Ordered list of buildpacks and urls for automatic detection
+# Ordered list of buildpacks and urls for automatic detection, pointing to master branch
 BUILDPACKS= OrderedDict(
     staticfile_buildpack='https://github.com/cloudfoundry/staticfile-buildpack.git',
     java_buildpack='https://github.com/cloudfoundry/java-buildpack.git',
@@ -49,9 +49,9 @@ BUILDPACKS= OrderedDict(
     php_buildpack='https://github.com/cloudfoundry/php-buildpack.git',
     go_buildpack='https://github.com/cloudfoundry/go-buildpack.git',
     dotnet_core_buildpack='https://github.com/cloudfoundry/dotnet-core-buildpack.git',
-    r_buildpack='https://github.com/cloudfoundry/r-buildpack.git',
     binary_buildpack='https://github.com/cloudfoundry/binary-buildpack.git',
     nginx_buildpack='https://github.com/cloudfoundry/nginx-buildpack.git',
+    r_buildpack='https://github.com/cloudfoundry/r-buildpack.git',
 )
 
 
@@ -78,7 +78,7 @@ load_folder() {
     fi
 }
 
-export HOME="${HOME-/home/vcap}"
+export HOME="${HOME-/home/vcap/app}"
 export LANG="${LANG-C.UTF-8}"
 export USER="${USER-root}"
 export TMPDIR="${TMPDIR-/home/vcap/tmp}"
@@ -96,9 +96,9 @@ case "$1" in
 esac
 
 [ -z ${DEBUG} ] || set -x
-load_folder "${HOME}/profile.d"
-load_folder "${HOME}/app/.profile.d"
-[ -f "${HOME}/app/.profile" ] && source .profile
+load_folder "/home/vcap/profile.d"
+load_folder "${HOME}/.profile.d"
+[ -f "${HOME}/.profile" ] && source "${HOME}/.profile"
 [ -z ${DEBUG} ] || env
 
 '''
@@ -682,6 +682,8 @@ class CFStaging(object):
         env_vars = {}
         default_staging_vars = dict(
             MEMORY_LIMIT = app_manifest['memory'],
+            LANG = "en_US.UTF-8",
+            CF_INSTANCE_INDEX = '0',
             CF_INSTANCE_IP = self.get_internal_ip(),
             CF_INSTANCE_PORT = os.getenv('APP_PORT', '8080'),
             CF_INSTANCE_ADDR = self.get_internal_ip() + ':' + os.getenv('APP_PORT', '8080'),
@@ -855,10 +857,12 @@ class CFStaging(object):
             except KeyError:
                 msg = "Application name '%s' without buildpacks defined in the manifest" % app_name
                 self.logger.info(msg)
-                if not extra_buildpacks:
-                    # Assign all buildpacks to enable detection
-                    manifest_buildpacks = list(self.Buildpacks.values())
-                    autodetect = True
+            if not manifest_buildpacks:
+                msg = "No buildpacks defined for application '%s', trying to autodetect a suitable one ...." % app_name
+                self.logger.info(msg)
+                # Assign all buildpacks to enable detection
+                manifest_buildpacks = list(self.Buildpacks.values())
+                autodetect = True
             if 'env' in app:
                 env = app['env']
             app.get('path', '.')
