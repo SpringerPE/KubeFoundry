@@ -80,62 +80,32 @@ The push functionality is not ready yet.
 
 Example:
 ```
-$ kubefoundry  build
-3098-09-03/14:44:44 Configuration loaded from file: /home/jriguera/.kubefoundry/config.yml
-3098-09-03/14:44:44 Pulling Docker image 'cloudfoundry/cflinuxfs3:latest' ...
-Downloading [=================================================> ]  362.6MB/363.8MB
-Extracting [==================================================>]  363.8MB/363.8MB
-3098-09-03/14:45:21 Packaging application context dir '/home/jriguera/devel/work/pe-bosh-workspace/test-application/app' ...
-3098-09-03/14:45:21 Building docker image 'test-app' ...
-3098-09-03/14:45:21 Running CloudFoundry staging to generate a container image ...
-Application 'test-app' buildpacks: ['https://github.com/cloudfoundry/python-buildpack.git#v1.6.27']
-Downloading buildpack 'https://github.com/cloudfoundry/python-buildpack.git#v1.6.27' ...
-Running staging process with buildpack #0: https://github.com/cloudfoundry/python-buildpack.git#v1.6.27
-[STG.sup]  -----> Download go 1.11.4
-[STG.sup]  -----> Running go build supply
-[STG.sup]  /buildpacks/test-app/0 /buildpacks/test-app/0
-[STG.sup]  /buildpacks/test-app/0
-[STG.sup]  -----> Python Buildpack version 1.6.27
-[STG.sup]  -----> Supplying Python
-[STG.sup]  -----> Installing python 3.7.2
-[STG.sup]         Download [https://buildpacks.cloudfoundry.org/dependencies/python/python-3.7.2-linux-x64-cflinuxfs3-5bac6de6.tgz]
-[STG.sup]  -----> Installing setuptools 40.6.3
-[STG.sup]         Download [https://buildpacks.cloudfoundry.org/dependencies/setuptools/setuptools-40.6.3-any-stack-3b474dad.zip]
-[STG.sup]  -----> Installing pip 9.0.3
-[STG.sup]         Download [https://buildpacks.cloudfoundry.org/dependencies/pip/pip-9.0.3-7bf48f9a.tar.gz]
-[STG.sup]  -----> Installing pip-pop 0.1.1
-[STG.sup]         Download [https://buildpacks.cloudfoundry.org/dependencies/manual-binaries/pip-pop/pip-pop-0.1.1-d410583a.tar.gz]
-[STG.sup]  -----> Running Pip Install
-[STG.sup]         Collecting Flask>=0.12 (from -r /home/vcap/app/requirements.txt (line 1))
-[STG.sup]           Downloading https://files.pythonhosted.org/packages/54/4f/1b294c1a4ab7b2ad5ca5fc4a9a65a22ef1ac48be126289d97668852d4ab3/Flask-2.0.1-py3-none-any.whl (94kB)
-[STG.sup]         Collecting click>=7.1.2 (from Flask>=0.12->-r /home/vcap/app/requirements.txt (line 1))
-[STG.sup]           Downloading https://files.pythonhosted.org/packages/76/0a/b6c5f311e32aeb3b406e03c079ade51e905ea630fc19d1262a46249c1c86/click-8.0.1-py3-none-any.whl (97kB)
-[STG.sup]         Collecting Jinja2>=3.0 (from Flask>=0.12->-r /home/vcap/app/requirements.txt (line 1))
-[STG.sup]           Downloading https://files.pythonhosted.org/packages/80/21/ae597efc7ed8caaa43fb35062288baaf99a7d43ff0cf66452ddf47604ee6/Jinja2-3.0.1-py3-none-any.whl (133kB)
-[STG.sup]         Collecting Werkzeug>=2.0 (from Flask>=0.12->-r /home/vcap/app/requirements.txt (line 1))
-[STG.sup]           Downloading https://files.pythonhosted.org/packages/bd/24/11c3ea5a7e866bf2d97f0501d0b4b1c9bbeade102bb4b588f0d2919a5212/Werkzeug-2.0.1-py3-none-any.whl (288kB)
-[STG.sup]         Collecting itsdangerous>=2.0 (from Flask>=0.12->-r /home/vcap/app/requirements.txt (line 1))
-[STG.sup]           Downloading https://files.pythonhosted.org/packages/9c/96/26f935afba9cd6140216da5add223a0c465b99d0f112b68a4ca426441019/itsdangerous-2.0.1-py3-none-any.whl
-[STG.sup]         Collecting importlib-metadata; python_version < "3.8" (from click>=7.1.2->Flask>=0.12->-r /home/vcap/app/requirements.txt (line 1))
-[STG.sup]           Downloading https://files.pythonhosted.org/packages/71/c2/cb1855f0b2a0ae9ccc9b69f150a7aebd4a8d815bd951e74621c4154c52a8/importlib_metadata-4.8.1-py3-none-any.whl
-[STG.sup]         Collecting MarkupSafe>=2.0 (from Jinja2>=3.0->Flask>=0.12->-r /home/vcap/app/requirements.txt (line 1))
-[STG.sup]           Downloading https://files.pythonhosted.org/packages/d7/56/9d9c0dc2b0f5dc342ff9c7df31c523cc122947970b5ea943b2311be0c391/MarkupSafe-2.0.1-cp37-cp37m-manylinux1_x86_64.whl
-[STG.sup]         Collecting zipp>=0.5 (from importlib-metadata; python_version < "3.8"->click>=7.1.2->Flask>=0.12->-r /home/vcap/app/requirements.txt (line 1))
-[STG.sup]           Downloading https://files.pythonhosted.org/packages/92/d9/89f433969fb8dc5b9cbdd4b4deb587720ec1aeb59a020cf15002b9593eef/zipp-3.5.0-py3-none-any.whl
-[STG.sup]         Collecting typing-extensions>=3.6.4; python_version < "3.8" (from importlib-metadata; python_version < "3.8"->click>=7.1.2->Flask>=0.12->-r /home/vcap/app/requirements.txt (line 1))
-[STG.sup]           Downloading https://files.pythonhosted.org/packages/74/60/18783336cc7fcdd95dae91d73477830aa53f5d3181ae4fe20491d7fc3199/typing_extensions-3.10.0.2-py3-none-any.whl
-[STG.sup]         Installing collected packages: zipp, typing-extensions, importlib-metadata, click, MarkupSafe, Jinja2, Werkzeug, itsdangerous, Flask
-[STG.sup]         Successfully installed Flask-2.0.1 Jinja2-3.0.1 MarkupSafe-2.0.1 Werkzeug-2.0.1 click-8.0.1 importlib-metadata-4.8.1 itsdangerous-2.0.1 typing-extensions-3.10.0.2 zipp-3.5.0
-[STG.sup]  .
+$ kubefoundry --cf.manifest manifest-test.yml  --deployment.apppath searchdirect-ci.zip stage
+9098-09-09/13:19:27 Configuration loaded from file: /home/jriguera/.kubefoundry/config.yml
+9098-09-09/13:19:27 Pulling Docker image 'cloudfoundry/cflinuxfs3:latest' ...
+9098-09-09/13:19:29 Packaging application context file 'searchdirect-ci.zip' ...
+9098-09-09/13:19:29 Building Docker container image 'searchdirect-qa' (searchdirect-qa:82214d95e072) ...
+9098-09-09/13:19:39 Staging application in Docker container ...                                                                                                                                                                               
+9098-09-09/13:19:39 Application 'searchdirect-qa' buildpacks: ['https://github.com/cloudfoundry/java-buildpack.git#v4.41']
+9098-09-09/13:19:39 Downloading buildpack 'https://github.com/cloudfoundry/java-buildpack.git#v4.41' (https://github.com/cloudfoundry/java-buildpack.git) ...
+9098-09-09/13:19:41 Running staging process with buildpack #0: https://github.com/cloudfoundry/java-buildpack.git#v4.41
+9098-09-09/13:19:42 [STG.fin]  -----> Java Buildpack v4.41
+9098-09-09/13:19:43 [STG.fin]  -----> Downloading Jvmkill Agent 1.16.0_RELEASE from https://java-buildpack.cloudfoundry.org/jvmkill/bionic/x86_64/jvmkill-1.16.0-RELEASE.so (0.3s)
+9098-09-09/13:19:46 [STG.fin]  -----> Downloading Open Jdk JRE 16.0.2_7 from https://java-buildpack.cloudfoundry.org/openjdk/bionic/x86_64/bellsoft-jre16.0.2%2B7-linux-amd64.tar.gz (3.2s)
+9098-09-09/13:19:47 [STG.fin]         Expanding Open Jdk JRE to .java-buildpack/open_jdk_jre (1.1s)
+9098-09-09/13:19:47 [STG.fin]  -----> Downloading Open JDK Like Memory Calculator 3.13.0_RELEASE from https://java-buildpack.cloudfoundry.org/memory-calculator/bionic/x86_64/memory-calculator-3.13.0-RELEASE.tar.gz (0.1s)
+9098-09-09/13:19:48 [STG.fin]         Loaded Classes: 21102, Threads: 250
+9098-09-09/13:19:48 [STG.fin]  -----> Downloading Client Certificate Mapper 1.11.0_RELEASE from https://java-buildpack.cloudfoundry.org/client-certificate-mapper/client-certificate-mapper-1.11.0-RELEASE.jar (0.0s)
+9098-09-09/13:19:48 [STG.fin]  -----> Downloading Container Security Provider 1.18.0_RELEASE from https://java-buildpack.cloudfoundry.org/container-security-provider/container-security-provider-1.18.0-RELEASE.jar (0.1s)
+9098-09-09/13:19:50 Application 'searchdirect-qa' successfully staged/compiled
+9098-09-09/13:19:50 Application 'searchdirect-qa' startup command: JAVA_OPTS="-agentpath:$PWD/.java-buildpack/open_jdk_jre/bin/jvmkill-1.16.0_RELEASE=printHeapHistogram=1 -Djava.io.tmpdir=$TMPDIR -XX:ActiveProcessorCount=$(nproc) -Djava.ext.dirs= -Djava.security.properties=$PWD/.java-buildpack/java_security/java.security $JAVA_OPTS" && CALCULATED_MEMORY=$($PWD/.java-buildpack/open_jdk_jre/bin/java-buildpack-memory-calculator-3.13.0_RELEASE -totMemory=$MEMORY_LIMIT -loadedClasses=21231 -poolType=metaspace -stackThreads=250 -vmOptions="$JAVA_OPTS") && echo JVM Memory Configuration: $CALCULATED_MEMORY && JAVA_OPTS="$JAVA_OPTS $CALCULATED_MEMORY" && MALLOC_ARENA_MAX=2 JAVA_OPTS=$JAVA_OPTS JAVA_HOME=$PWD/.java-buildpack/open_jdk_jre exec $PWD/bin/searchdirect
+9098-09-09/13:19:51 Finished Cloudfoundry staging process.                                                                                                                                                                                    
+9098-09-09/13:19:54 Creating final Docker container image ...                                                                                                                                                                                 
+9098-09-09/13:20:12 Created Docker container image for application                                                                                                                                                                            
+9098-09-09/13:20:14 Successfully built 676c1d333268                                                                                                                                                                                           
+9098-09-09/13:20:14 Successfully tagged searchdirect-qa:latest                                                                                                                                                                                
+9098-09-09/13:20:14 Pushing image 'searchdirect-qa' to 'eu.gcr.io/halfpipe-io/engineering-enablement/searchdirect-qa:82214d95e072' ...
 
-[STG.sup]  
-
-[STG.fin]  -----> Running go build finalize
-[STG.fin]  /buildpacks/test-app/0 /buildpacks/test-app/0
-[STG.fin]  /buildpacks/test-app/0
-Buildpack #0 successfully applied
-Successfully built 0c1529c67b3e
-Successfully tagged test-app:latest
 
 $ kubefoundry run
 3098-09-03/14:48:09 Configuration loaded from file: /home/jriguera/.kubefoundry/config.yml
@@ -180,6 +150,23 @@ Loading /home/vcap/app/.profile.d/0_python.sh
 Application 0_test-app (pid=10) exited with code 0
 
 ```
+
+You can also generate manifests and deploy to Kubernetes using `kubectl` directly. The manifest needed to deploy directly to kubernetes is `deploy.yml`:
+
+```
+$ kubefoundry --cf.manifest manifest-test.yml  --deployment.apppath searchdirect-ci.zip manifest
+9098-09-09/13:21:55 Configuration loaded from file: /home/jriguera/.kubefoundry/config.yml
+9098-09-09/13:21:55 Generating AppFile manifest: /home/jriguera/devel/work/oscar/searchdirect/jose-searchdirect/vela.yml
+9098-09-09/13:21:55 Generating KubeFoundry manifest: /home/jriguera/devel/work/oscar/searchdirect/jose-searchdirect/app.yml
+9098-09-09/13:21:55 Generating K8S manifest: /home/jriguera/devel/work/oscar/searchdirect/jose-searchdirect/deploy.yml
+$ kubectl apply --validate=true -f deploy.yml 
+service/jose-searchdirect created
+virtualservice.networking.istio.io/jose-searchdirect created
+statefulset.apps/jose-searchdirect created
+```
+
+
+
 
 Development
 ===========
