@@ -356,7 +356,7 @@ class CFRunner(object):
             with open(f) as af:
                 for line in af:
                     name, var = line.partition("=")[::2]
-                    result[name.strip()] = var
+                    result[name.strip()] = var.strip().strip('"')
         return result
 
     def get_value_from_file(self, f):
