@@ -10,6 +10,12 @@ KubeVela:
   NameSpace: katee-engineering-enablement
   Cluster: dev
 
+CF:
+	Org: myorg
+	Space: myspace
+	Manifest: manifest.yml
+	ReadManifest: try
+
 Docker: 
   Registry: "https://eu.gcr.io"
   Username: "_json_key"
@@ -29,7 +35,6 @@ Deployment:
     Cpu: "1"
     Disk: "4G"
   Manifest:
-    ParseCF: "try"
     Generate: "all"
     OverWrite: true
 
