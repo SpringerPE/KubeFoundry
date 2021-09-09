@@ -11,10 +11,10 @@ KubeVela:
   Cluster: dev
 
 CF:
-	Org: myorg
-	Space: myspace
-	Manifest: manifest.yml
-	ReadManifest: try
+  Org: myorg
+  Space: myspace
+  Manifest: manifest.yml
+  ReadManifest: try
 
 Docker: 
   Registry: "https://eu.gcr.io"
