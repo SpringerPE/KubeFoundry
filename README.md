@@ -24,8 +24,15 @@ Available Commands:
   version     Show build and version
 
 Flags:
+      --cf.api string                          cf api
+      --cf.manifest string                     cf manifest
+      --cf.org string                          cf org
+      --cf.readmanifest string                 cf read manifest
+      --cf.space string                        cf space
       --config string                          yaml config file (default /home/jriguera/.kubefoundry/config.yml)
       --deployment.appname string              app
+      --deployment.apppath string              app path
+      --deployment.approutes string            routes
       --deployment.appversion string           version
       --deployment.args string                 args
       --deployment.defaults.cpu string         default cpu
@@ -36,15 +43,11 @@ Flags:
       --deployment.manifest.appfile string     kubevela appfile
       --deployment.manifest.generate string    manifest generate
       --deployment.manifest.overwrite string   manifest overwrite
-      --deployment.manifest.parsecf string     cf manifest
       --deployment.path string                 path
       --deployment.registry string             registry prefix
       --deployment.stagingdriver string        staging
       --docker.api string                      docker api
   -h, --help                                   help for this command
-      --kubevela.environment string            Kubevela environment
-      --kubevela.kubeconfig string             Kubernetes config
-      --kubevela.namespace string              Kubevela namespace
       --log.level string                       program log level
       --team string                            team
 
