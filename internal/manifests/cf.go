@@ -11,8 +11,6 @@ import (
 	"strconv"
 	"strings"
 
-	log "kubefoundry/internal/log"
-
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -25,6 +23,8 @@ type CfApplication struct {
 	RandomRoute bool              `yaml:"random-route,omitempty"`
 	Routes      []CfRoute         `yaml:"routes,omitempty"`
 	Memory      string            `yaml:"memory,omitempty"`
+	Path        string            `yaml:"path,omitempty"`
+	Instances   int               `yaml:"instances,omitempty"`
 	// Other keys
 }
 
@@ -38,18 +38,11 @@ type CfManifest struct {
 	Apps     []CfApplication `yaml:"applications"`
 }
 
-func ParseCfManifest(dir string, log log.Logger) (manifest *CfManifest, err error) {
-	manifest = &CfManifest{}
-	// Can be either manifest.yml or manifest.yaml
-	filename := "manifest.yml"
-	manifestPath := filepath.Join(dir, filename)
+func UnmarshalCfManifest(manifest *CfManifest) (err error) {
+	manifestPath := filepath.Join(manifest.Path, manifest.Filename)
 	if _, err = os.Stat(manifestPath); os.IsNotExist(err) {
-		filename = "manifest.yaml"
-		manifestPath = filepath.Join(dir, filename)
-		if _, err = os.Stat(manifestPath); os.IsNotExist(err) {
-			err = fmt.Errorf("Cannot find CF manifest in '%s': %s", dir, err.Error())
-			return
-		}
+		err = fmt.Errorf("Cannot open CF manifest '%s': %s", manifestPath, err.Error())
+		return
 	}
 	data, errPath := ioutil.ReadFile(manifestPath)
 	if errPath != nil {
@@ -64,9 +57,15 @@ func ParseCfManifest(dir string, log log.Logger) (manifest *CfManifest, err erro
 		err = fmt.Errorf("Failed to unmarshall manifest %s: %s", manifestPath, err.Error())
 		return
 	}
-	manifest.Path = dir
-	manifest.Filename = filename
-	return manifest, nil
+	return nil
+}
+
+func ParseCfManifest(filename string) (manifest *CfManifest, err error) {
+	manifest = &CfManifest{}
+	manifest.Path = filepath.Dir(filename)
+	manifest.Filename = filepath.Base(filename)
+	err = UnmarshalCfManifest(manifest)
+	return
 }
 
 func (m *CfManifest) Applications() (apps []string) {

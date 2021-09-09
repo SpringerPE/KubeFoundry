@@ -39,12 +39,14 @@ spec:
       env:
 {{- range $k, $v := $a.Env }}    
         {{$k}}: "{{$v}}"
-{{end}}{{end -}}
+{{- end}}
+{{end -}}
 {{- if $a.Routes }}
       routes:
 {{- range $r := $a.Routes}}
         - "{{$r}}"
-{{end}}{{end}}
+{{- end}}
+{{end -}}
     scopes:
       healthscopes.core.oam.dev: {{$.Name}}-default-health
 {{end}}

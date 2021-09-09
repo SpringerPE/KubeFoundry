@@ -37,12 +37,10 @@ func LoadStagingDriver(driver string, c *config.Config, l log.Logger) (AppStagin
 			return stager, nil
 		} else {
 			err = fmt.Errorf("Unable to initialize staging driver '%s': %s", driver, err.Error())
-			l.Error(err)
 			return nil, err
 		}
 	} else {
 		err := fmt.Errorf("Unknown staging driver, not included in the program")
-		l.Error(err)
 		return nil, err
 	}
 }
@@ -52,7 +50,7 @@ func ListStaginDrivers() []string {
 	defer muStagers.RUnlock()
 
 	result := []string{}
-	for k, _ := range stagers {
+	for k := range stagers {
 		result = append(result, k)
 	}
 	return result

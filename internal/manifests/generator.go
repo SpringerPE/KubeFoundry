@@ -7,8 +7,6 @@ import (
 	"os"
 	"strings"
 	"text/template"
-
-	log "kubefoundry/internal/log"
 )
 
 // EmbedK8sTemplates holds static files
@@ -67,10 +65,9 @@ func (m ManifestType) String() string {
 type Generator struct {
 	output    io.Writer
 	templates *template.Template
-	log       log.Logger
 }
 
-func NewGenerator(output io.Writer, l log.Logger) (*Generator, error) {
+func NewGenerator(output io.Writer) (*Generator, error) {
 	templates, err := template.ParseFS(EmbedK8sTemplates, "templates/*")
 	if err != nil {
 		panic(err)
@@ -78,7 +75,6 @@ func NewGenerator(output io.Writer, l log.Logger) (*Generator, error) {
 	m := &Generator{
 		templates: templates,
 		output:    output,
-		log:       l,
 	}
 	return m, nil
 }
@@ -93,27 +89,23 @@ func (m *Generator) Generate(kind ManifestType, data *ContextData) (err error) {
 			err = fmt.Errorf("Unknown manifest type")
 		}
 	}
-	if err != nil {
-		m.log.Error(err)
-	}
 	return
 }
 
-func New(kind ManifestType, data *ContextData, fullpath string, truncate bool, l log.Logger) error {
+func New(kind ManifestType, data *ContextData, fullpath string, truncate bool) error {
 	flags := os.O_RDWR | os.O_CREATE
 	if truncate {
 		flags = os.O_RDWR | os.O_CREATE | os.O_TRUNC
 	}
-	target, err := os.OpenFile(fullpath, flags, 0755)
+	target, err := os.OpenFile(fullpath, flags, 0644)
 	if err != nil {
 		err = fmt.Errorf("Unable to create manifest: %s", err.Error())
 		return err
 	}
 	defer target.Close()
-	m, err := NewGenerator(target, l)
+	m, err := NewGenerator(target)
 	if err != nil {
 		return err
 	}
-	l.Infof("Generating %s manifest '%s' ...", kind.String(), fullpath)
 	return m.Generate(kind, data)
 }

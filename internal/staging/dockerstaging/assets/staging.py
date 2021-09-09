@@ -33,6 +33,7 @@ import zipfile
 import json
 import socket
 import uuid
+import tempfile
 
 from select import select
 from subprocess import (Popen, PIPE)
@@ -316,7 +317,7 @@ class CFManifest(object):
         "memory": "1024M",
         "metadata": {},
         "no-route": False,
-        "path": '.',
+        "path": '',
         "processes": [],
         "random-route": False,
         "routes": [],
@@ -492,7 +493,7 @@ class Buildpack(object):
             if default_process_types is None:
                 default_process_types = {}
             if len(default_process_types) > 0:
-                self.logger.info("Buildpack #%s startup command: %s" % (self.index, default_process_types))
+                self.logger.debug("Buildpack #%s provides startup command: %s" % (self.index, default_process_types))
             else:
                 self.logger.debug("Buildpack #%s does not provide startup command!" % (self.index))
             return True, default_process_types, config_vars, addons
@@ -545,7 +546,7 @@ class Buildpack(object):
                     msg = "Error running release step in buildpack #%s" % (self.index)
                     self.logger.error(msg)
                     raise ValueError(msg)
-            self.logger.info("Buildpack #%s successfully applied" % (self.index))
+            self.logger.debug("Buildpack #%s successfully applied" % (self.index))
             return True, default_process_types, config_vars, addons
         else:
             self.logger.info("Skipping #%s buildpack!" % (self.index))
@@ -556,7 +557,7 @@ class Buildpack(object):
 class CFStaging(object):
     Buildpacks = BUILDPACKS
 
-    def __init__(self, homedir, buildpacksdir, cachedir, contextdir, cfmanifest, variables=None, healthcheck=None, logger=None):
+    def __init__(self, homedir, buildpacksdir, cachedir, contextdir, healthcheck=None, logger=None):
         # homedir = /var/vcap
         # buildpacksdir = directory to download/process buildpacks
         # cachedir = directory used by buildpacks for caching their stuff
@@ -588,36 +589,12 @@ class CFStaging(object):
         self.homedir = homedir
         self.contextdir = contextdir
         self.appdir = os.path.join(homedir, 'app')
-        cfmanifestpath = os.path.join(self.contextdir, cfmanifest)
-        try:
-            self.manifest = CFManifest(cfmanifestpath, variables, logger)
-            # Copy manifest to appdir
-            path = os.path.join(self.appdir, cfmanifest)
-            os.makedirs(os.path.dirname(path), mode=0o755, exist_ok=True)
-            cfmanifestpath = shutil.copy(cfmanifestpath, path)
-        except PermissionError as e:
-            self.logger.error("Cannot copy CF manifest. %s" % (str(e)))
-            raise
-        except OSError as e:
-            self.logger.error("Application directory cannot be created: %s" % (str(e)))
-            raise  
-        try:
-            for app in self.manifest.list_apps():
-                self.logger.debug("Found application %s in manifest file" % (app))
-                path = os.path.join(buildpacksdir, app)
-                os.makedirs(path, mode=0o755, exist_ok=True)
-                self.logger.debug("Directory for buildpacks '%s' created successfully" % path)
-        except OSError as e:
-            self.logger.error("Buildpacks directory cannot be created: %s" % (str(e)))
-            raise
-        except KeyError as e:
-            self.logger.error("CloudFoundry manifest is incomplete: %s" % (str(e)))
-            raise
         self.healthcheck = healthcheck
         self.depsdir = os.path.join(homedir, 'deps')
         self.initd = os.path.join(homedir, 'init.d')
         self.buildpacksdir = buildpacksdir
         self.cleaning_paths = []
+        self.manifest = None
 
     def get_internal_ip(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -704,7 +681,6 @@ class CFStaging(object):
         return env_vars
 
     def download_buildpack(self, name, path, force=False):
-        self.logger.info("Downloading buildpack '%s' ..." % (name))
         if os.path.isdir(path):
             self.logger.debug("Buildpack '%s' already downloaded in '%s'" % (name, path))
             if not force:
@@ -731,6 +707,7 @@ class CFStaging(object):
             msg = "Unknown buildpack '%s', is not a git resource" % name
             self.logger.error(msg)
             raise ValueError(msg)
+        self.logger.info("Downloading buildpack '%s' (%s) ..." % (name, url))
         Git.download(url, path, version, True, (self.logger.level == logging.DEBUG))
         self.logger.debug("Buildpack '%s' dowloaded to '%s'" % (name, path))
         return True
@@ -826,7 +803,7 @@ class CFStaging(object):
         return startcommands, sidecarcommands
 
 
-    def _get_apps_buildpacks(self, application="", extra_buildpacks=[], force_download=False):
+    def _get_apps_buildpacks(self, appbits, application="", extra_buildpacks=[], force_download=False):
         # get list of apps from buildpack directory, first level is app name and
         # second level is a set of indexes representing the list buildpaks of the app 
         # buildpacks
@@ -840,7 +817,7 @@ class CFStaging(object):
         #           |- 0 [python-buildpack] 
         #           |- 1 [custom-buildpack] (final, folder exist, it will not be downloaded)
         #           ...
-        #   
+        # 
         app_settings = OrderedDict()
         for app_name in self.manifest.list_apps():
             app = self.manifest.get_app_params(app_name)
@@ -865,21 +842,39 @@ class CFStaging(object):
                 autodetect = True
             if 'env' in app:
                 env = app['env']
-            app.get('path', '.')
+            if 'path' in app:
+                if app['path']:
+                    appbits = app['path']
             try:
-                appdir = os.path.join(self.contextdir, app['path'])
+                appdir = os.path.join(self.contextdir, appbits)
                 if os.path.isfile(appdir):
                     # it has to be a zip file (like a jar), but it will accept other formats ;-)
-                    #dst = os.path.join(self.appdir, os.path.dirname(app['path']))
-                    #os.makedirs(dst, mode=0o755, exist_ok=True)
-                    shutil.unpack_archive(appdir, self.appdir)
-                if os.path.isdir(appdir):
+                    # shutil.unpack_archive(appdir, self.appdir)
+                    with zipfile.ZipFile(appdir, 'r') as zipapp:
+                        contents = zipapp.namelist()
+                        # Assuming the first entry in the zip file is the root path
+                        base_path = contents[0]
+                        remove_base_path = True
+                        for item in contents:
+                            if not item.startswith(base_path):
+                                # zip file is the app itself because there are more that one
+                                # file/folder in the root path
+                                remove_base_path = False
+                                break
+                        if not remove_base_path:
+                            zipapp.extractall(self.appdir)
+                        else:
+                            temp_path = tempfile.mkdtemp(dir=self.contextdir)
+                            zipapp.extractall(temp_path)
+                            self._recursive_overwrite(os.path.join(temp_path, base_path), self.appdir)
+                            shutil.rmtree(temp_path)
+                elif os.path.isdir(appdir):
                     #dst = os.path.join(self.appdir, app['path'])
                     # TODO: ignore also .cfignore
                     #shutil.copytree(appdir, self.appdir, ignore=shutil.ignore_patterns('.git'))
                     self._recursive_overwrite(appdir, self.appdir)
                 else:
-                    raise ValueError("path defined in the manifest not found: %s" % app['path'])
+                    raise ValueError("application path not found: %s" % appbits)
             except Exception as e:
                 self.logger.error("Cannot copy application files, %s" % str(e))
                 raise
@@ -898,10 +893,31 @@ class CFStaging(object):
                 self.logger.error("Errors processing buildpacks for application '%s'. Skipping application" % app_name)
         return app_settings
 
-    def run(self, application="", extra_buildpacks=[], force=False):
+    def run(self, appbits, cfmanifest, application="", variables=None, extra_buildpacks=[], force=False):
+        cfmanifestpath = os.path.join(self.contextdir, cfmanifest)
+        try:
+            self.manifest = CFManifest(cfmanifestpath, variables, self.logger)
+            # Copy manifest to appdir
+            path = os.path.join(self.appdir, cfmanifest)
+            cfmanifestpath = shutil.copy(cfmanifestpath, path)
+        except PermissionError as e:
+            self.logger.error("Cannot copy CF manifest. %s" % (str(e)))
+            raise
+        try:
+            for app in self.manifest.list_apps():
+                self.logger.debug("Found application %s in manifest file" % (app))
+                bpath = os.path.join(self.buildpacksdir, app)
+                os.makedirs(bpath, mode=0o755, exist_ok=True)
+                self.logger.debug("Directory for buildpacks '%s' created successfully" % bpath)
+        except OSError as e:
+            self.logger.error("Buildpacks directory cannot be created: %s" % (str(e)))
+            raise
+        except KeyError as e:
+            self.logger.error("CloudFoundry manifest is incomplete: %s" % (str(e)))
+            raise
         startcommands = OrderedDict()
         healthchecks = OrderedDict()
-        app_settings = self._get_apps_buildpacks(application, extra_buildpacks, force)
+        app_settings = self._get_apps_buildpacks(appbits, application, extra_buildpacks, force)
         app_index = 0
         for app, settings in app_settings.items():
             autodetect = settings[0]
@@ -933,6 +949,7 @@ class CFStaging(object):
                     self.logger.error("Cannot apply buildpack '%s' to application '%s'" % (buildpack.name, app))
                     raise
                 index += 1
+            self.logger.info("Application '%s' successfully staged/compiled" % (app))
             if startcommand:
                 # Write staging_info.yml with the first startcommand of the list
                 with open(os.path.join(self.homedir, 'staging_info.yml'), 'w') as staging_info:
@@ -970,6 +987,8 @@ class CFStaging(object):
         except OSError as e:
             self.logger.error("Startup file '%s' cannot be created: %s" % (startup, str(e)))
             raise
+        self.logger.info("Application '%s' startup command: \033[0;33m%s\033[0m" % (app, command))
+
 
     def _write_healthcheck(self, app_healthchecks):
         if self.healthcheck:
@@ -982,9 +1001,9 @@ class CFStaging(object):
                         data = healthcheck[1]
                         print("# checks for %s" % (app), file=w)
                         if kind == "http":
-                            print("curl --silent --fail --connect-timeout 2 http://127.0.0.1:$PORT%s" % (data), file=w)
+                            print("curl --silent --fail --connect-timeout 2 http://127.0.0.1:${APP_PORT:-${PORT:-8080}}%s" % (data), file=w)
                         elif kind == "port":
-                            print("nc -z -w 2 127.0.0.1 $PORT", file=w)
+                            print("nc -z -w 2 127.0.0.1 ${APP_PORT:-${PORT:-8080}}", file=w)
                         elif kind == "process":
                             print("pgrep --ignore-case --full %s >/dev/null" % (data), file=w)
                         else:
@@ -1008,17 +1027,18 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, description=__doc__, epilog=epilog)
     parser.add_argument('-d', '--debug', action='store_true', default=False, help='Enable debug mode')
     parser.add_argument('-f', '--force', action='store_true', default=False, help='Force downloading buildpacks data')
-    parser.add_argument('-b', '--buildpack', action='append', default=[], help='Buildpack url for staging the application')
+    parser.add_argument('-b', '--buildpack', action='append', default=[], help='Buildpacks urls for staging the application')
+    parser.add_argument('--builddir', default='/buildpacks' , help='Working directory for buildpacks')  
+    parser.add_argument('--buildcache', default="/var/local/buildpacks/cache", help='Buildpacks cache directory')
     parser.add_argument('-m', '--manifest', default="manifest.yml", help='CloudFoundry application manifest file')
     parser.add_argument('-v', '--manifest-vars', default="vars.yml", help='CloudFoundry variables file for manifest')
-    parser.add_argument('-H', '--home', default="/home/vcap", help='Cloudfoundry VCAP home folder')
+    parser.add_argument('--home', default="/home/vcap", help='Cloudfoundry VCAP home folder')
     parser.add_argument('-a', '--app', default="", help='Application name (when a manifest has multiple applications)')
-    parser.add_argument('-C', '--cache', default="/var/local/buildpacks/cache", help='Buildpacks cache directory')
-    parser.add_argument('-c', '--context', default="/app", help='Application context folder')
+    parser.add_argument('--appcontext', default="/app", help='Application context folder within the container')
     parser.add_argument('--healthcheck', default="/healthcheck.sh", help='File to write the healthchecks')
     parser.add_argument('--link-context', action='store_true', default=False, help='Delete context folder and create a symlink to home/app')
     parser.add_argument('--clean', action='count', default=0, help='Delete the downloaded buildpacks, twice deletes also cache')
-    parser.add_argument('builddir', type=str, help='Working directory for buildpacks')  
+    parser.add_argument('application', default='.', type=str, help='Application zip file or directory')  
     args = parser.parse_args()
     if args.debug:
         logger.setLevel(logging.DEBUG)
@@ -1029,9 +1049,10 @@ def main():
     try:
         sys.stdout.flush()
         sys.stderr.flush()
-        print("--- START Cloudfoundry staging ---", flush=True)
-        stage = CFStaging(args.home, args.builddir, args.cache, args.context, args.manifest, args.manifest_vars, args.healthcheck, logger)
-        stage.run(args.app, args.buildpack, args.force)
+        cfmanifest = os.environ.get("CF_MANIFEST", args.manifest)
+        cfmanifest_vars = os.environ.get("CF_VARS", args.manifest_vars)
+        stage = CFStaging(args.home, args.builddir, args.buildcache, args.appcontext, args.healthcheck, logger)
+        stage.run(args.application, cfmanifest, args.app, cfmanifest_vars, args.buildpack, args.force)
         if args.clean > 0:
             stage.cleanup_buildpacks((args.clean > 1))
         if args.link_context:
@@ -1044,8 +1065,6 @@ def main():
         sys.stdout.flush()
         sys.stderr.flush()
         time.sleep(1)
-        print("--- END Cloudfoundry staging ---", flush=True)
-
 
 if __name__ == "__main__":
     main()

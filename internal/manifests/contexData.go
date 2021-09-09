@@ -8,9 +8,16 @@ import (
 	"strings"
 	"time"
 
-	log "kubefoundry/internal/log"
-
 	gitrepo "github.com/go-git/go-git/v5"
+)
+
+var (
+	DefaultDomain     string = "local"
+	DefaultPort       int    = 8080
+	DefaultCPU        string = "1"
+	DefaultMem        string = "1024M"
+	DefaultDisk       string = "4G"
+	DefaultRefVersion string = "latest"
 )
 
 type CfData struct {
@@ -29,6 +36,7 @@ type KubeData struct {
 
 type ResourceData struct {
 	Domain string
+	Port   int
 	CPU    string
 	Mem    string
 	Disk   string
@@ -60,21 +68,30 @@ type ContextData struct {
 	Apps      []*AppData
 	Kubevela  *KubeData
 	CF        *CfData
-	log       log.Logger
 }
 
-func NewContextData(contextDir, team, imgRegistry string, args map[string]string, kube *KubeData, cf *CfData, l log.Logger) *ContextData {
-	t := time.Now().UTC()
-	ref := t.Format("20060102150405")
-	// check if path is a git repo and get commit
-	opts := gitrepo.PlainOpenOptions{
-		DetectDotGit: true,
+func NewDefaultResourceData() *ResourceData {
+	rs := &ResourceData{
+		Domain: DefaultDomain,
+		Port:   DefaultPort,
+		CPU:    DefaultCPU,
+		Mem:    DefaultMem,
+		Disk:   DefaultDisk,
 	}
+	return rs
+}
+
+func NewContextMetadata(contextDir, team, imgRegistry string, args map[string]string, kube *KubeData, cf *CfData) *ContextData {
+	t := time.Now().UTC()
+	//ref := t.Format("20060102150405")
+	ref := DefaultRefVersion
+	// check if path is a git repo and get commit
+	opts := gitrepo.PlainOpenOptions{DetectDotGit: true}
 	git := ""
 	if repo, err := gitrepo.PlainOpenWithOptions(contextDir, &opts); err == nil {
 		if head, err := repo.Head(); err == nil {
-			// 20 first chars from hash
-			ref = head.Strings()[1][1:21]
+			// 13 first chars from hash
+			ref = head.Strings()[1][1:13]
 		}
 		if remotes, err := repo.Remotes(); err == nil {
 			git = remotes[0].Config().URLs[0]
@@ -99,101 +116,109 @@ func NewContextData(contextDir, team, imgRegistry string, args map[string]string
 		Apps:      []*AppData{},
 		Kubevela:  kube,
 		CF:        cf,
-		log:       l,
 	}
 	return contextData
 }
 
-func (d *ContextData) GetContextDataApp(name, version string, port int, parseCfManifest bool, rs *ResourceData) (err error) {
+func (d *ContextData) GetAppContextMetadata(dir, name, version string, routes map[string]string, rs *ResourceData, parseCF bool) (err error) {
 	var apps []*AppData
-
-	if parseCfManifest {
-		apps, err = d.GetContextDataCF(name, version, port, rs)
-		if err != nil {
-			return
+	if rs == nil {
+		rs = NewDefaultResourceData()
+	}
+	if dir == "" {
+		dir = d.Dir
+	}
+	if parseCF {
+		if d.CF != nil && d.CF.Manifest != nil && d.CF.Manifest.Filename != "" {
+			apps, err = d.getAppContextMetadataCF(dir, name, version, routes, rs)
+			if err != nil {
+				return
+			}
+		} else {
+			return fmt.Errorf("Unable to get CloudFoundry metadata, settings not defined")
 		}
 	} else {
-		apps = d.GetContextDataDefault(name, version, port, rs)
+		apps = d.getAppContextMetadataDefault(dir, name, version, routes, rs)
 	}
+	// TODO: Load appfile and merge?
 	d.Apps = append(d.Apps, apps...)
 	return nil
 }
 
-func (d *ContextData) GetContextDataDefault(name, version string, port int, rs *ResourceData) (apps []*AppData) {
-	appname := name
-	if appname == "" {
-		// no concurrency here!
-		appname = fmt.Sprintf("%s-webapp-%d", d.Name, len(d.Apps))
+func (d *ContextData) getAppContextMetadataDefault(dir, name, version string, routes map[string]string, rs *ResourceData) (apps []*AppData) {
+	if name == "" {
+		name = fmt.Sprintf("%s-webapp-%d", d.Name, len(d.Apps))
 	}
-	image := appname + ":" + d.Ref
-	appversion := "latest"
-	hostname := appname + "-" + d.Ref
-	routes := make(map[string]string)
-	if version != "" {
-		image = appname + ":" + version
-		appversion = version
-		hostname = appname + "-" + version
+	if version == "" {
+		version = d.Ref
 	}
+	image := name + ":" + version
 	if d.Registry != "" {
 		image = d.Registry + "/" + d.Team + "/" + image
 	}
-	if rs != nil && rs.Domain != "" {
-		routes["http-0"] = strings.ToLower(hostname + "." + rs.Domain)
+	appRoutes := make(map[string]string)
+	for k, v := range routes {
+		appRoutes[k] = v
+	}
+	if len(appRoutes) == 0 && rs.Domain != "" {
+		hostname := name + "-" + version
+		appRoutes[strconv.Itoa(rs.Port)+"-0"] = strings.ToLower(hostname + "." + rs.Domain)
 	}
 	appData := AppData{
-		Name:      appname,
-		Dir:       d.Dir,
+		Name:      name,
+		Dir:       dir,
 		Image:     image,
-		Version:   appversion,
-		Routes:    routes,
+		Version:   version,
+		Routes:    appRoutes,
 		Env:       make(map[string]string),
 		Instances: 1,
-		Port:      port,
+		Port:      rs.Port,
 		Resources: rs,
 	}
 	apps = append(apps, &appData)
 	return
 }
 
-func (d *ContextData) GetContextDataCF(name, version string, port int, rs *ResourceData) (apps []*AppData, err error) {
-	if d.CF == nil {
-		d.CF = &CfData{}
-	}
-	if cfm, errm := ParseCfManifest(d.Dir, d.log); errm != nil {
-		return apps, errm
+func (d *ContextData) getAppContextMetadataCF(dir, name, version string, routes map[string]string, rs *ResourceData) (apps []*AppData, err error) {
+	err = UnmarshalCfManifest(d.CF.Manifest)
+	if err != nil {
+		return
 	} else {
-		d.CF.Manifest = cfm
-		for _, app := range cfm.Applications() {
+		for _, app := range d.CF.Manifest.Applications() {
 			if name != "" && app != name {
+				// Select only the application name
 				continue
 			}
-			appManifest, _ := cfm.GetApplication(app)
-			image := app + ":" + d.Ref
-			appversion := "latest"
-			routes := make(map[string]string)
-			if rs != nil {
-				if rs.Domain != "" {
-					if cfoutes, err := appManifest.GetRoutes(rs.Domain); err == nil {
-						for i, rt := range cfoutes {
-							routes["http-"+strconv.Itoa(i)] = rt
-						}
-					} else {
-						if version != "" {
-							routes["http-0"] = app + "-" + version + "." + rs.Domain
-						} else {
-							routes["http-0"] = app + "-" + d.Ref + "." + rs.Domain
-						}
-					}
-				}
-			} else {
-				rs = &ResourceData{}
+			appManifest, _ := d.CF.Manifest.GetApplication(app)
+			name := app
+			if version == "" {
+				version = d.Ref
 			}
-			if version != "" {
-				appversion = version
-				image = app + ":" + version
-			}
+			image := name + ":" + version
 			if d.Registry != "" {
 				image = d.Registry + "/" + d.Team + "/" + image
+			}
+			appRoutes := make(map[string]string)
+			for k, v := range routes {
+				appRoutes[k] = v
+			}
+			if len(appRoutes) == 0 && rs.Domain != "" {
+				if cfoutes, err := appManifest.GetRoutes(rs.Domain); err == nil {
+					for i, rt := range cfoutes {
+						appRoutes[strconv.Itoa(rs.Port)+"-"+strconv.Itoa(i)] = rt
+					}
+				} else {
+					hostname := name + "-" + version
+					appRoutes[strconv.Itoa(rs.Port)+"-0"] = strings.ToLower(hostname + "." + rs.Domain)
+				}
+			}
+			instances := 1
+			if appManifest.Instances > 0 {
+				instances = appManifest.Instances
+			}
+			path := dir
+			if appManifest.Path != "" {
+				path = appManifest.Path
 			}
 			if mem, cpu, err := appManifest.GetResources(0.0); err == nil {
 				rs.CPU = strconv.FormatFloat(cpu, 'f', -1, 64)
@@ -201,13 +226,13 @@ func (d *ContextData) GetContextDataCF(name, version string, port int, rs *Resou
 			}
 			appData := AppData{
 				Name:      app,
-				Dir:       d.Dir,
+				Dir:       path,
 				Image:     image,
-				Version:   appversion,
-				Routes:    routes,
+				Version:   version,
+				Routes:    appRoutes,
 				Env:       appManifest.Env,
-				Instances: 1,
-				Port:      port,
+				Instances: instances,
+				Port:      rs.Port,
 				Resources: rs,
 			}
 			apps = append(apps, &appData)

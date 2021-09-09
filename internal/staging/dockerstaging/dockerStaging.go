@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -200,16 +201,34 @@ func (ac *DockerAppContainerImage) Pull(ctx context.Context, baseImage bool) (er
 
 func (ac *DockerAppContainerImage) Build(ctx context.Context) (id string, err error) {
 	id = ""
+	appbits, errB := os.Stat(ac.appData.Dir)
+	if os.IsNotExist(errB) {
+		err = fmt.Errorf("Applicaction path '%s' does not exist", ac.appData.Dir)
+		ac.log.Error(err)
+		return
+	}
 	// Pull base image
 	err = ac.Pull(ctx, true)
 	if err != nil {
 		return
 	}
 	// Create a tar with the app for docker context folder
-	ac.log.Infof("Packaging application context dir '%s' ...", ac.appData.Dir)
+	app_bits := ac.appContainerDir
+	if appbits.IsDir() {
+		ac.log.Infof("Packaging application context dir '%s' ...", ac.appData.Dir)
+		app_bits = "."
+	} else {
+		ac.log.Infof("Packaging application context file '%s' ...", ac.appData.Dir)
+		app_bits = filepath.Base(ac.appData.Dir)
+	}
 	tarcontext := bytes.NewBuffer(nil)
 	tar := tar.NewTar(".", ac.log, tarcontext)
 	tar.Add(ctx, ac.appData.Dir, ac.appContainerDir)
+	if !appbits.IsDir() {
+		// Add the manifest
+		appManifest := filepath.Join(ac.contextData.CF.Manifest.Path, ac.contextData.CF.Manifest.Filename)
+		tar.Add(ctx, appManifest, ac.appContainerDir)
+	}
 	// Caching mechanism and way to provide buildpacks directly to the container
 	if ac.config.BPCacheDir != "" {
 		if _, err = os.Stat(ac.config.BPCacheDir); !os.IsNotExist(err) {
@@ -229,13 +248,20 @@ func (ac *DockerAppContainerImage) Build(ctx context.Context) (id string, err er
 	for key, value := range ac.contextData.Args {
 		buildArgs[key] = &value
 	}
-	ac.log.Infof("Building docker image '%s' ...", ac.name)
+	ac.log.Infof("Building Docker container image '%s' (%s:%s) ...", ac.name, ac.appData.Name, ac.appData.Version)
 	buildArgs["BASE"] = &ac.config.ContainerBaseImage
-	buildArgs["CF_MANIFEST"] = &ac.contextData.CF.Manifest.Filename
 	buildArgs["CONTEXT_DIR"] = &ac.appContainerDir
 	buildArgs["BUILDPACKS_DIR"] = &ac.bpContainerDir
+	buildArgs["APP_BITS"] = &app_bits
 	buildArgs["APP_NAME"] = &ac.appData.Name
 	buildArgs["APP_CREATED"] = &ac.contextData.DateHuman
+	buildArgs["APP_VERSION"] = &ac.appData.Version
+	app_port := strconv.Itoa(ac.appData.Port)
+	buildArgs["APP_PORT"] = &app_port
+	buildArgs["CF_MANIFEST"] = &ac.contextData.CF.Manifest.Filename
+	buildArgs["CF_API"] = &ac.contextData.CF.Api
+	buildArgs["CF_ORG"] = &ac.contextData.CF.Org
+	buildArgs["CF_SPACE"] = &ac.contextData.CF.Space
 	imageBuildOptions := dockertypes.ImageBuildOptions{
 		Remove:         ac.config.RemoveBeforeBuild,
 		ForceRemove:    true,
@@ -244,15 +270,15 @@ func (ac *DockerAppContainerImage) Build(ctx context.Context) (id string, err er
 		Dockerfile:     ac.dockerfile,
 		Tags:           ac.tags,
 		BuildArgs:      buildArgs,
+		Squash:         false,
 	}
-	ac.log.Info("Running CloudFoundry staging to generate a container image ...")
 	if buildResponse, err := ac.cli.ImageBuild(ctx, tarcontext, imageBuildOptions); err != nil {
 		err = fmt.Errorf("Unable to run CF staging for '%s': %s", ac.name, err.Error())
 		ac.log.Error(err)
 	} else {
 		defer buildResponse.Body.Close()
 		if err = ac.displayJSONMessagesStream(buildResponse.Body, ac.output); err != nil {
-			err = fmt.Errorf("Dicoker CF staging error: %s", err.Error())
+			err = fmt.Errorf("Doker CF staging error: %s", err.Error())
 			ac.log.Error(err)
 			return id, err
 		}
@@ -416,8 +442,21 @@ func (ac *DockerAppContainerImage) Run(ctx context.Context, dataDir string, env 
 		Architecture: image.Architecture,
 		OS:           image.Os,
 	}
+	kubefoundryEnv := map[string]string{
+		"APP_NAME":    ac.appData.Name,
+		"APP_CREATED": ac.contextData.DateHuman,
+		"APP_VERSION": ac.appData.Version,
+		"APP_PORT":    strconv.Itoa(ac.appData.Port),
+		"CF_MANIFEST": ac.contextData.CF.Manifest.Filename,
+		"CF_API":      ac.contextData.CF.Api,
+		"CF_ORG":      ac.contextData.CF.Org,
+		"CF_SPACE":    ac.contextData.CF.Space,
+	}
 	envlist := []string{}
 	for k, v := range env {
+		envlist = append(envlist, fmt.Sprintf("%s=%s", k, v))
+	}
+	for k, v := range kubefoundryEnv {
 		envlist = append(envlist, fmt.Sprintf("%s=%s", k, v))
 	}
 	_, isTerminal := term.GetFdInfo(ac.output)
@@ -506,6 +545,39 @@ func (ac *DockerAppContainerImage) Run(ctx context.Context, dataDir string, env 
 	return err
 }
 
+func (ac *DockerAppContainerImage) print(out io.Writer, info bool, msg, color string) {
+	fdinfo, isTerminal := term.GetFdInfo(out)
+	if out != nil && isTerminal {
+		size, err := term.GetWinsize(fdinfo)
+		terLong := uint16(80)
+		if err == nil {
+			terLong = size.Width
+		}
+		if info {
+			// Skip all docker messages about intermediate containers
+			if !strings.HasPrefix(msg, "---> ") && !strings.HasPrefix(msg, "Removing intermediate container") {
+				msgLong := uint16(len(msg))
+				if msgLong > terLong {
+					msgLong = terLong
+				}
+				verb := fmt.Sprintf("%%%ds", -int(terLong))
+				if color != "" {
+					fmt.Fprintf(out, fmt.Sprintf(verb, color+msg[:msgLong])+"\033[0m\r")
+				} else {
+					fmt.Fprintf(out, fmt.Sprintf(verb, msg[:msgLong])+"\r")
+				}
+			}
+		} else {
+			verb := fmt.Sprintf("%%%ds", int(terLong)+1)
+			if color != "" {
+				fmt.Fprintf(out, fmt.Sprintf(verb, "\r")+color+msg+"\033[0m")
+			} else {
+				fmt.Fprintf(out, fmt.Sprintf(verb, "\r")+msg)
+			}
+		}
+	}
+}
+
 // DisplayJSONMessagesStream displays a json message stream from `in` to `out`, `isTerminal`
 // describes if `out` is a terminal. If this is the case, it will print `\n` at the end of
 // each line and move the cursor while displaying.
@@ -515,11 +587,6 @@ func (ac *DockerAppContainerImage) displayJSONMessagesStream(in io.Reader, out i
 	stgrunning := false
 	status := ""
 	progress := false
-	print := func(msg string) {
-		if out != nil {
-			fmt.Fprintf(out, msg)
-		}
-	}
 	for {
 		var jm jsonmessage.JSONMessage
 		if err := dec.Decode(&jm); err != nil {
@@ -541,18 +608,32 @@ func (ac *DockerAppContainerImage) displayJSONMessagesStream(in io.Reader, out i
 		} else {
 			stream := strings.TrimSpace(jm.Stream)
 			if stream != "" {
-				ac.log.Debug(stream)
 				if !stgrunning {
-					if strings.HasPrefix(stream, "--- START Cloudfoundry staging ---") {
+					if strings.HasPrefix(stream, "#--- MSG!") {
+						ac.print(out, true, "", "")
+						ac.log.Info(stream[10:])
+					} else if strings.HasPrefix(stream, "#--- SRT!") {
+						ac.print(out, true, "", "")
+						ac.log.Info(stream[10:])
 						stgrunning = true
-					} else if strings.HasPrefix(stream, "Successfully") {
-						print(stream + "\n")
+					} else {
+						if strings.HasPrefix(stream, "Successfully") {
+							ac.print(out, true, "", "")
+							ac.log.Info(stream)
+						} else {
+							ac.log.Debug(stream)
+							ac.print(out, true, stream, "\033[1;36m")
+						}
 					}
 				} else {
-					if strings.HasPrefix(stream, "--- END Cloudfoundry staging ---") {
+					if strings.HasPrefix(stream, "#--- END!") {
+						ac.print(out, true, "", "")
+						ac.log.Info(stream[10:])
 						stgrunning = false
 					} else {
-						print(stream + "\n")
+						//ac.log.Debug(stream)
+						//ac.print(out, false, stream+"\n", "\033[1;36m")
+						ac.log.Info("\033[1;36m" + stream + "\033[0m")
 					}
 				}
 			}
@@ -560,19 +641,19 @@ func (ac *DockerAppContainerImage) displayJSONMessagesStream(in io.Reader, out i
 				if isTerminal {
 					if jm.Status != status {
 						ac.log.Debug(jm.Status)
-						//print(status)
+						//print(false, status)
 						if progress {
 							progress = false
-							print("\n")
+							ac.print(out, false, "\r", "\033[1;36m")
 						}
 					}
 					if jm.ProgressMessage != "" {
-						print(jm.Status + " " + jm.ProgressMessage + "\r")
+						ac.print(out, false, jm.Status+" "+jm.ProgressMessage+"\r", "\033[1;36m")
 						progress = true
 					}
 				} else if jm.Status != status {
 					ac.log.Debug(jm.Status)
-					print(jm.Status + "\n")
+					//ac.print(out, false, jm.Status+"\n", "")
 				}
 				status = jm.Status
 			}

@@ -11,21 +11,25 @@ metadata:
     "kubefoundry/date": "{{.DateHuman}}"
     "kubefoundry/commit": "{{.Ref}}"
     "kubefoundry/team": "{{.Team}}"
+    {{- if .CF }}
+    "kubefoundry/org": "{{.CF.Org}}"
+    "kubefoundry/space": "{{.CF.Space}}"
+    {{- end}}
     {{- range $i, $a := .Apps}}
     "kubefoundry/version.{{$i}}": "{{$a.Version}}"
     {{- if $a.Routes }}{{range $j, $r := $a.Routes}}
     "kubefoundry/route.{{$i}}.{{$j}}": "{{$r}}"
-    {{end}}{{- end}}
+    {{- end}}{{end}}
     {{- end}}
 spec:
   selector:
     app: {{.Name}}
   ports:
   {{- range $i, $a := .Apps}}
-  - name: "http-{{$a.Name}}"
+  - name: "http-{{$a.Port}}"
     port: 80
     targetPort: {{$a.Port}}
-  {{end}}
+  {{- end}}
 
 ---
 apiVersion: "networking.istio.io/v1beta1"
@@ -41,27 +45,30 @@ metadata:
     "kubefoundry/date": "{{.DateHuman}}"
     "kubefoundry/commit": "{{.Ref}}"
     "kubefoundry/team": "{{.Team}}"
+    {{- if .CF }}
+    "kubefoundry/org": "{{.CF.Org}}"
+    "kubefoundry/space": "{{.CF.Space}}"
+    {{- end}}
     {{- range $i, $a := .Apps}}
     "kubefoundry/version.{{$i}}": "{{$a.Version}}"
     {{- if $a.Routes }}{{range $j, $r := $a.Routes}}
     "kubefoundry/route.{{$i}}.{{$j}}": "{{$r}}"
-    {{end}}{{- end}}
+    {{- end}}{{end}}
     {{- end}}
 spec:
-    gateways: [
+    gateways:
     - "istio-system/private"
     - "istio-system/public"
     - "mesh"
     http:
     - route:
       - destination:
-        host: "{{.Name}}"
+          host: "{{.Name}}"
     {{- range $i, $a := .Apps}}
     hosts:
     {{- if $a.Routes }}{{range $j, $r := $a.Routes}}
     - "{{$r}}"
-    {{end}}
-    {{- end}}
+    {{- end}}{{end}}
     {{- end}}
 
 ---
@@ -80,14 +87,18 @@ metadata:
     "kubefoundry/date": "{{.DateHuman}}"
     "kubefoundry/commit": "{{.Ref}}"
     "kubefoundry/team": "{{.Team}}"
+    {{- if .CF }}
+    "kubefoundry/org": "{{.CF.Org}}"
+    "kubefoundry/space": "{{.CF.Space}}"
+    {{- end}}
     {{- range $i, $a := .Apps}}
     "kubefoundry/version.{{$i}}": "{{$a.Version}}"
     {{- if $a.Routes }}{{range $j, $r := $a.Routes}}
     "kubefoundry/route.{{$i}}.{{$j}}": "{{$r}}"
-    {{end}}{{- end}}
+    {{- end}}{{end}}
     {{- end}}
 spec:
-  {{range $i, $a := .Apps}}
+  {{- range $i, $a := .Apps}}
   serviceName: {{$.Name}}
   updateStrategy:
     type: RollingUpdate
@@ -96,7 +107,7 @@ spec:
       app: "{{$.Name}}"
   replicas: {{$a.Instances}}
   template:
-    metadata: {
+    metadata:
       annotations:
         "kubefoundry/app": "{{$.Name}}"
         {{- if $.Git }}
@@ -105,10 +116,14 @@ spec:
         "kubefoundry/date": "{{$.DateHuman}}"
         "kubefoundry/commit": "{{$.Ref}}"
         "kubefoundry/team": "{{$.Team}}"
+        {{- if $.CF }}
+        "kubefoundry/org": "{{$.CF.Org}}"
+        "kubefoundry/space": "{{$.CF.Space}}"
+        {{- end}}
         "kubefoundry/version.{{$i}}": "{{$a.Version}}"
         {{- if $a.Routes }}{{range $j, $r := $a.Routes}}
         "kubefoundry/route.{{$i}}.{{$j}}": "{{$r}}"
-        {{end}}{{- end}}
+        {{- end}}{{end}}
       labels:
         "sidecar.istio.io/inject": "true"
         "app": "{{$.Name}}"
@@ -124,16 +139,16 @@ spec:
         {{- if $a.Resources }}
         resources:
           limits:
-            cpu: {{$a.Resources.CPU}}
-            memory: {{$a.Resources.Mem}}
-            "ephemeral-storage": {{$a.Resources.Disk}}
+            cpu: "{{$a.Resources.CPU}}"
+            memory: "{{$a.Resources.Mem}}"
+            ephemeral-storage: "{{$a.Resources.Disk}}"
           requests:
-            cpu: {{$a.Resources.CPU}}
-            memory: {{$a.Resources.Mem}}
-            "ephemeral-storage": {{$a.Resources.Disk}}
+            cpu: "{{$a.Resources.CPU}}"
+            memory: "{{$a.Resources.Mem}}"
+            ephemeral-storage: "{{$a.Resources.Disk}}"
         {{- end}}
         ports:
-        - name: "http-{{$a.Name}}"
+        - name: "http-{{$a.Port}}"
           containerPort: {{$a.Port}}
         env:
         - name: "VCAP_PLATFORM_OPTIONS"
@@ -142,17 +157,17 @@ spec:
           value: "{}"
         - name: "VCAP_APP_HOST"
           value: "0.0.0.0"
-        {{- range $k, $v := $a.Env }}    
+        {{- range $k, $v := $a.Env }}
         - name: "{{$k}}"
           value: "{{$v}}"
-        {{end}}
+        {{- end}}
         volumeMounts:
         - name: "podinfo-kubefoundry"
           mountPath: "/etc/kubefoundry-instance-info"
         startupProbe:
           exec:
             command: ["/healthcheck.sh"]
-          initialDelaySeconds: 2
+          initialDelaySeconds: 60
           failureThreshold: 1
           periodSeconds: 2
         livenessProbe:
@@ -180,12 +195,12 @@ spec:
           items:
             - path: "CPU_LIMIT"
               resourceFieldRef:
-                containerName: "{{$.Name}}"
+                containerName: "{{$a.Name}}"
                 resource: "limits.cpu"
                 divisor: "1m"
             - path: "MEMORY_LIMIT"
               resourceFieldRef:
-                containerName: "{{$.Name}}"
+                containerName: "{{$a.Name}}"
                 resource: "limits.memory"
                 divisor: "1Mi"
             - path: "INSTANCE_NAMESPACE"
@@ -196,7 +211,7 @@ spec:
                 fieldPath: "metadata.annotations['cni.projectcalico.org/podIP']"
             - path: "INSTANCE_NAME"
               fieldRef:
-                fieldPath: "metadata.labels['app.oam.dev/component']"
+                fieldPath: "metadata.labels['kubectl.kubernetes.io/default-container']"
             - path: "INSTANCE_GUID"
               fieldRef:
                 fieldPath: "metadata.uid"

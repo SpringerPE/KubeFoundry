@@ -11,6 +11,7 @@ ARG BASE=cloudfoundry/cflinuxfs3:latest
 FROM "${BASE}" AS staging
 
 ARG APP_NAME
+ARG APP_BITS='.'
 ARG APP_CREATED="now"
 ARG APP_VERSION="latest"
 ARG APP_HOME="/home/vcap/app"
@@ -19,12 +20,11 @@ ARG CF_API="https://api.cf"
 ARG CF_ORG="undefined"
 ARG CF_SPACE="undefined"
 ARG CF_VCAP_SERVICES="{}"
-ARG CF_MANIFEST=manifest.yml
-ARG CF_VARS=vars.yml
+ARG CF_MANIFEST="manifest.yml"
+ARG CF_VARS="vars.yml"
 ARG HOME="/home/vcap"
 ARG CONTEXT_DIR="/app"
 ARG BUILDPACKS_DIR="/buildpacks"
-
 
 # Env vars needed:
 # CF_INSTANCE_ADDR
@@ -46,16 +46,22 @@ ARG BUILDPACKS_DIR="/buildpacks"
 # CF_INSTANCE_CERT="/etc/cf-instance-credentials/instance.crt"
 # CF_INSTANCE_KEY="/etc/cf-instance-credentials/instance.key"
 
-
+# Define URLs in VCAP_APPLICATION by using APP_URIS env var
+# APP_URIS="app.domain.com,app2.domain2.org,hola.jose.local"
 ENV HOME=${HOME} \
     LANG=en_US.UTF-8 \
     APP_NAME=${APP_NAME} \
     APP_VERSION=${APP_VERSION} \
+    APP_CREATED=${APP_CREATED} \
     APP_PORT=${APP_PORT} \
     CF_API=${CF_API} \
     CF_ORG=${CF_ORG} \
     CF_SPACE=${CF_SPACE} \
-    CF_VCAP_SERVICES=${CF_VCAP_SERVICES}
+    CF_VCAP_SERVICES=${CF_VCAP_SERVICES} \
+    CF_MANIFEST=${CF_MANIFEST} \
+    CF_VARS=${CF_VARS} \
+    APP_HOME=${APP_HOME} \
+    APP_PORT=${APP_PORT}
 
 # copy resources
 COPY *.py /
@@ -69,19 +75,27 @@ RUN rm -f ${CONTEXT_DIR}
 COPY app ${CONTEXT_DIR}
 
 # Run staging
-RUN /staging.py \
+RUN echo '#--- SRT! Staging application in Docker container ...';  \
+    /staging.py \
     --home ${HOME} \
-    --contex ${CONTEXT_DIR} \
-    --cache ${BUILDPACKS_DIR}/cache \
+    --appcontex ${CONTEXT_DIR} \
+    --buildcache ${BUILDPACKS_DIR}/cache \
+    --builddir ${BUILDPACKS_DIR} \
     --manifest ${CF_MANIFEST} \
     --manifest-vars ${CF_VARS} \
     --link-context \
-    ${BUILDPACKS_DIR}
+    --manifest ${CF_MANIFEST} \
+    --manifest-vars ${CF_VARS} \
+    --app ${APP_NAME} \
+    ${APP_BITS} ; \
+    echo '#--- END! Finished Cloudfoundry staging process. '
+
+RUN echo '#--- MSG! Creating final Docker container image ...'
 
 #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 ARG BASE=cloudfoundry/cflinuxfs3:latest
-FROM "${BASE}"
+FROM "${BASE}" as app
 
 ARG APP_NAME
 ARG APP_CREATED="now"
@@ -92,20 +106,19 @@ ARG CF_API="https://api.cf.local"
 ARG CF_ORG="undefined"
 ARG CF_SPACE="undefined"
 ARG HOME="/home/vcap"
-ARG CF_MANIFEST=manifest.yml
-ARG CF_VARS=vars.yml
+ARG CF_MANIFEST="manifest.yml"
+ARG CF_VARS="vars.ym"
 
-LABEL org.opencontainers.image.ref.name="${APP_NAME}"
-LABEL org.opencontainers.image.created="${APP_CREATED}"
-LABEL org.opencontainers.image.version="${APP_VERSION}"
-LABEL org.opencontainers.image.vendor="Springer Nature EE"
-LABEL org.opencontainers.image.description="CloudFoundry staging process in Docker"
-
-LABEL com.springernature.kubefoundry.org="${CF_ORG}"
-LABEL com.springernature.kubefoundry.team="${CF_SPACE}"
-LABEL com.springernature.kubefoundry.application.name="${APP_NAME}"
-LABEL com.springernature.kubefoundry.application.version="${APP_VERSION}"
-LABEL com.springernature.kubefoundry.application.date="${APP_CREATED}"
+LABEL org.opencontainers.image.ref.name="${APP_NAME}" \
+    org.opencontainers.image.created="${APP_CREATED}" \
+    org.opencontainers.image.version="${APP_VERSION}" \
+    org.opencontainers.image.vendor="Springer Nature EE" \
+    org.opencontainers.image.description="CloudFoundry staging process in Docker" \
+    com.springernature.kubefoundry.org="${CF_ORG}" \
+    com.springernature.kubefoundry.team="${CF_SPACE}" \
+    com.springernature.kubefoundry.application.name="${APP_NAME}" \
+    com.springernature.kubefoundry.application.version="${APP_VERSION}" \
+    com.springernature.kubefoundry.application.date="${APP_CREATED}"
 
 WORKDIR ${HOME}
 # copy resources
@@ -139,22 +152,23 @@ COPY --from=staging /run.py /healthcheck.sh /
 # CF_INSTANCE_CERT="/etc/cf-instance-credentials/instance.crt"
 # CF_INSTANCE_KEY="/etc/cf-instance-credentials/instance.key"
 
-# Undefine CF_API (or set it up to empty string, to disable CF env vars)
-# env vars
-# ENV APP_NAME=${APP_NAME} \
-#     APP_VERSION=${APP_VERSION} \
-#     APP_PORT=${APP_PORT} \
-#     CF_API=${CF_API} \
-#     CF_ORG=${CF_ORG} \
-#     CF_SPACE=${CF_SPACE} \
-#     CF_VCAP_SERVICES=${CF_VCAP_SERVICES}
-
+# Define URLs in VCAP_APPLICATION by using APP_URIS env var
+# APP_URIS="app.domain.com,app2.domain2.org,hola.jose.local"
 ENV HOME=${APP_HOME} \
     LANG=C.UTF-8 \
-    USER=root \
+    USER=vcap \
     TMPDIR=/home/vcap/tmp \
     DEPS_DIR=/home/vcap/deps \
-    PORT=${APP_PORT}
+    CF_API=${CF_API} \
+    CF_ORG=${CF_ORG} \
+    CF_SPACE=${CF_SPACE} \
+    CF_MANIFEST=${CF_MANIFEST} \
+    CF_VARS=${CF_VARS} \
+    APP_NAME=${APP_NAME} \
+    APP_CREATED=${APP_CREATED} \
+    APP_VERSION=${APP_VERSION} \
+    APP_HOME=${APP_HOME} \
+    APP_PORT=${APP_PORT}
 
 # Note: Docker healthchecks are not used by K8S!
 # This is only useful for platforms based in Docker (or supporting the healthchecks!)
@@ -168,4 +182,7 @@ HEALTHCHECK \
     CMD /healthcheck.sh
 
 EXPOSE ${APP_PORT}
-CMD ["/run.py", "--user", "vcap", "--cf-fake-env", "--manifest-env"]
+CMD ["/run.py", "--user", "vcap", "--cf-fake-env", "--manifest-env" ]
+
+# Show end
+RUN echo '#--- MSG! Created Docker container image for application'

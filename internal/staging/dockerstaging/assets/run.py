@@ -373,17 +373,19 @@ class CFRunner(object):
         annotations = self.get_keys_values_from_file(os.path.join(k8s_cf_env, "annotations"))
         labels = self.get_keys_values_from_file(os.path.join(k8s_cf_env, "labels"))
         try:
-            memory_limit = get_value_from_file(os.path.join(k8s_cf_env, "MEMORY_LIMIT"))
+            # Memory limit comes from API in M
+            memory_limit = self.get_value_from_file(os.path.join(k8s_cf_env, "MEMORY_LIMIT"))
         except Exception as e:
-            self.logger.error("Unable to read Downward-api file: %s. Falling back to manifest value." % e)
-            memory_limit = app_manifest['memory']
+            self.logger.error("Unable to read Downward-api file: %s. Falling back to default value." % e)
+            # memory_limit = app_manifest['memory']
+            memory_limit = "1024"
         try:
-            cpu_limit = get_value_from_file(os.path.join(k8s_cf_env, "CPU_LIMIT"))
+            cpu_limit = self.get_value_from_file(os.path.join(k8s_cf_env, "CPU_LIMIT"))
         except Exception as e:
             self.logger.error("Unable to read Downward-api file: %s. Falling back to 1 CPU." % e)
-            cpu_limit = 1
+            cpu_limit = "1"
         try:
-            uid = get_value_from_file(os.path.join(k8s_cf_env, "INSTANCE_GUID"))
+            uid = self.get_value_from_file(os.path.join(k8s_cf_env, "INSTANCE_GUID"))
         except Exception as e:
             self.logger.error("Unable to read Downward-api file: %s. Generating random UUID" % e)
             uid = str(uuid.uuid5(uuid.NAMESPACE_DNS, name))
@@ -396,7 +398,7 @@ class CFRunner(object):
         default_running_vars = dict(
             PORT = os.getenv('APP_PORT', '8080'),
             CPU_LIMIT = cpu_limit,
-            MEMORY_LIMIT = memory_limit,
+            MEMORY_LIMIT = memory_limit+"M",
             INSTANCE_INDEX = instance_index,
             INSTANCE_GUID = uid,
             CF_INSTANCE_GUID = uid,
@@ -412,7 +414,7 @@ class CFRunner(object):
             app_name = name
         uris = []
         for k, value in annotations.items():
-            if k.startswith("kubefoundry/route/"):
+            if k.startswith("kubefoundry/route"):
                 uris.append(value)
         space = annotations.get("kubefoundry/space", os.getenv('CF_SPACE', 'null'))
         org = annotations.get("kubefoundry/org", os.getenv('CF_ORG', 'null'))
@@ -420,8 +422,8 @@ class CFRunner(object):
             cf_api = os.getenv('CF_API', 'https://kubefoundry.local'),
             limits = {
                 "fds": 16384,
-                "mem": memory_limit,
-                "disk": app_manifest['disk_quota']
+                "mem": int(memory_limit) * 1048576,
+                "disk": 4000 * 1048576,
             },
             users = 'null',
             name = app_name,
@@ -469,8 +471,10 @@ class CFRunner(object):
                 manifest = self.manifest.get_app_params(app_name)
                 cfenv = {}
                 if fake_cf_env:
+                    self.logger.debug("Application running in local container, generating fake metadata ....")
                     cfenv = self.get_default_running_vars(app_name, manifest)
                 if kubefoundry_env_path:
+                    self.logger.debug("Application running in Kubernetes, trying to get metadata ....")
                     cfenv = self.get_k8s_running_vars(app_name, manifest, kubefoundry_env_path)
                 manifestenv = {}
                 if read_manifest_env:
@@ -506,14 +510,17 @@ def main():
     parser.add_argument('-v', '--manifest-vars', metavar='vars.yml', default="vars.yml", help='CloudFoundry variables file for manifest')
     parser.add_argument('-H', '--home', default="/home/vcap", help='Cloudfoundry VCAP home folder')
     args = parser.parse_args()
-    if args.debug:
+    debugvar = os.environ.get("DEBUG", '')
+    if args.debug or debugvar:
         logger.setLevel(logging.DEBUG)
         handler.setLevel(logging.DEBUG)
     else:
         logger.setLevel(logging.INFO)
         handler.setLevel(logging.INFO)
     try:
-        runner = CFRunner(args.home, args.manifest, args.user, args.manifest_vars, logger)
+        cfmanifest = os.environ.get("CF_MANIFEST", args.manifest)
+        cfmanifest_vars = os.environ.get("CF_VARS", args.manifest_vars)
+        runner = CFRunner(args.home, cfmanifest, args.user, cfmanifest_vars, logger)
         rc = runner.run(True, args.manifest_env, args.cf_fake_env, args.cf_k8s_env)
         sys.exit(rc)
     except Exception as e:

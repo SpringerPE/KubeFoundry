@@ -10,10 +10,10 @@ const (
 
 type KubeVela struct {
 	Api         string `mapstructure:"api"`
-	KubeConfig  string `mapstructure:"kubeconfig" default:"~/.kube/config" valid:"required" flag:"Kubernetes config"`
+	KubeConfig  string `mapstructure:"kubeconfig" valid:"required" default:"~/.kube/config" flag:"kubernetes config"`
 	Cluster     string `mapstructure:"cluster"`
-	Environment string `mapstructure:"environment" valid:"required" flag:"Kubevela environment"`
-	Namespace   string `mapstructure:"namespace" valid:"required" flag:"Kubevela namespace"`
+	Environment string `mapstructure:"environment" valid:"required" flag:"kubevela environment"`
+	Namespace   string `mapstructure:"namespace" valid:"required" flag:"kubernetes namespace"`
 }
 
 type Docker struct {
@@ -21,6 +21,14 @@ type Docker struct {
 	Registry string `mapstructure:"registry"`
 	Username string `mapstructure:"username"`
 	Password string `mapstructure:"password"`
+}
+
+type CF struct {
+	API          string `mapstructure:"api" flag:"cf api"`
+	Org          string `mapstructure:"org" flag:"cf org"`
+	Space        string `mapstructure:"space" flag:"cf space"`
+	Manifest     string `mapstructure:"manifest" valid:"required" default:"manifest.yml" flag:"cf manifest"`
+	ReadManifest string `mapstructure:"readmanifest" valid:"in(yes|no|try),required" default:"try" flag:"cf read manifest"`
 }
 
 type Defaults struct {
@@ -32,7 +40,6 @@ type Defaults struct {
 }
 
 type Manifest struct {
-	ParseCF   string `mapstructure:"parsecf" valid:"in(yes|no|try),required" default:"try" flag:"cf manifest"`
 	AppFile   string `mapstructure:"appfile" default:"vela.yml" valid:"required" flag:"kubevela appfile"`
 	Generate  string `mapstructure:"generate" valid:"in(appfile|kubefoundry|kubernetes|all),required" default:"kubefoundry" flag:"manifest generate"`
 	OverWrite bool   `mapstructure:"overwrite" default:"true" flag:"manifest overwrite"`
@@ -40,8 +47,10 @@ type Manifest struct {
 
 type Deployment struct {
 	Path          string            `mapstructure:"path" default:"" flag:"path"`
+	AppPath       string            `mapstructure:"apppath" default:"" flag:"app path"`
 	AppName       string            `mapstructure:"appname" default:"" flag:"app"`
 	AppVersion    string            `mapstructure:"appversion" default:"" flag:"version"`
+	AppRoutes     []string          `mapstructure:"approutes" default:"[]" flag:"routes"`
 	StagingDriver string            `mapstructure:"stagingdriver" valid:"required" default:"DockerStaging" flag:"staging"`
 	Args          map[string]string `mapstructure:"args" flag:"args"`
 	RegistryTag   string            `mapstructure:"registry" flag:"registry prefix"`
@@ -64,10 +73,11 @@ type Logging struct {
 
 // Config the application's configuration
 type Config struct {
-	Team          string        `mapstructure:"team" valid:"required" flag:"team"`
-	KubeVela      KubeVela      `mapstructure:"kubevela"`
 	Log           Logging       `mapstructure:"log"`
-	Docker        Docker        `mapstructure:"docker"`
+	Team          string        `mapstructure:"team" valid:"required" flag:"team"`
 	Deployment    Deployment    `mapstructure:"deployment"`
+	KubeVela      *KubeVela     `mapstructure:"kubevela"`
+	Docker        Docker        `mapstructure:"docker"`
+	CF            CF            `mapstructure:"cf" valid:"required"`
 	DockerStaging DockerStaging `mapstructure:"dockerstaging"`
 }
